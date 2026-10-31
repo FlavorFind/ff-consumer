@@ -177,7 +177,9 @@ jobs:
           SECRET_KEY: ci-migration-check
           DATABASE_URL: postgres://ff_consumer:ff_consumer_pass@localhost:5432/ff_consumer_test
           REDIS_URL: redis://localhost:6379/0
-        run: python manage.py migrate --check
+        run: |
+          python manage.py migrate --no-input
+          python manage.py migrate --check
 
   # ─────────────────────────────────────────────────
   # 7. OpenAPI schema validation

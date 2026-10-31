@@ -10,7 +10,7 @@ Conflict rules:
 """
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
@@ -112,7 +112,7 @@ class SyncPullView(APIView):
                 )
         else:
             # First sync — return everything
-            since = datetime(2000, 1, 1, tzinfo=timezone.utc)
+            since = datetime(2000, 1, 1, tzinfo=UTC)
 
         user = request.user
         changes = _collect_changes_since(user, since)
