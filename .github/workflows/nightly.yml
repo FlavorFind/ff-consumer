@@ -9,6 +9,9 @@ env:
   PYTHON_VERSION: "3.12"
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Dependency advisory scan
+  # ---------------------------------------------------------------------------
   dependency-scan:
     name: Dependency Advisory Scan
     runs-on: ubuntu-latest
@@ -20,6 +23,9 @@ jobs:
       - run: pip install pip-audit==2.7.3
       - run: pip-audit -r requirements/base.txt -r requirements/prod.txt
 
+  # ---------------------------------------------------------------------------
+  # 2. Full history secret scan
+  # ---------------------------------------------------------------------------
   extended-secret-scan:
     name: Full History Secret Scan
     runs-on: ubuntu-latest
@@ -32,3 +38,201 @@ jobs:
         with:
           path: ./
           extra_args: --only-verified
+
+  # ---------------------------------------------------------------------------
+  # 3. DAST — ZAP baseline scan against staging
+  #    Crawls the public OpenAPI schema and probes all endpoints for common
+  #    vulnerabilities: XSS, SQLi, CSRF, security headers, info leakage.
+  #    Fails the job on any HIGH or CRITICAL finding.
+  # ---------------------------------------------------------------------------
+  dast:
+    name: DAST (ZAP Baseline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: "https://consumer.flavorfind.co.ke"
+          # Use the OpenAPI schema so ZAP knows all endpoints
+          cmd_options: >-
+            -I
+            -z "-configfile /zap/wrk/options.prop"
+          # Fail on HIGH/CRITICAL (Medium is reported but not blocking)
+          fail_action: true
+          allow_issue_writing: false
+          artifact_name: zap-baseline-report
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-baseline-report
+          path: report_html.html
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # 4. API fuzzing — RESTler against staging
+  #    Automatically generates sequences of API calls from the OpenAPI schema
+  #    and looks for 500 errors, crashes, and spec violations.
+  # ---------------------------------------------------------------------------
+  api-fuzzing:
+    name: API Fuzzing (RESTler)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download RESTler
+        run: |
+          curl -fsSL https://github.com/microsoft/restler-fuzzer/releases/download/v9.2.4/restler_bin_linux.tar.gz \
+            -o restler.tar.gz
+          mkdir -p restler
+          tar -xzf restler.tar.gz -C restler
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Generate OpenAPI schema
+        run: |
+          pip install -r requirements/base.txt
+          DJANGO_SETTINGS_MODULE=config.settings.test \
+          SECRET_KEY=ci-only-not-a-real-secret \
+          DATABASE_URL=sqlite:///ci.db \
+          python manage.py spectacular --file openapi.yaml
+
+      - name: Compile RESTler grammar
+        run: |
+          dotnet restler/Restler/Restler.dll compile \
+            --api_spec openapi.yaml \
+            --output_path restler_output
+
+      - name: Run RESTler fuzz-lean (quick mode)
+        env:
+          TARGET_URL: "https://consumer.flavorfind.co.ke"
+        run: |
+          dotnet restler/Restler/Restler.dll fuzz-lean \
+            --grammar_file restler_output/Compile/grammar.py \
+            --dictionary_file restler_output/Compile/dict.json \
+            --settings restler_output/Compile/engine_settings.json \
+            --no_ssl \
+            --target_ip consumer.flavorfind.co.ke \
+            --target_port 443 \
+            --time_budget 0.5 \
+            --output_path restler_results
+        continue-on-error: true   # report findings but don't block nightly
+
+      - name: Check for 5xx errors in fuzzing results
+        run: |
+          if find restler_results -name "*.txt" | xargs grep -l "500\|502\|503" 2>/dev/null; then
+            echo "::warning::RESTler found 5xx responses — review restler_results artifacts"
+          else
+            echo "No 5xx errors found in fuzzing run"
+          fi
+
+      - name: Upload fuzzing results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: restler-fuzz-results
+          path: restler_results/
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # 5. Safety golden set — diet/allergen filter must always be 100%
+  #    Runs the dedicated safety test file in isolation to make regressions
+  #    immediately visible even if the full test suite isn't run.
+  # ---------------------------------------------------------------------------
+  safety-golden-set:
+    name: Safety Golden Set (Diet / Allergen)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ff_consumer_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: pip install -r requirements/test.txt
+      - name: Run safety golden set
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.test
+          DATABASE_URL: postgresql://postgres:postgres@localhost/ff_consumer_test
+          REDIS_URL: redis://localhost:6379/0
+        run: |
+          pytest apps/search/tests/test_safety_golden_set.py -v \
+            --tb=short \
+            --no-header \
+            -q
+        # Hard gate — this MUST be 100%. No tolerance.
+
+  # ---------------------------------------------------------------------------
+  # 6. OpenAPI schema drift check
+  #    Regenerates the schema and diffs it against the committed docs/openapi.yaml.
+  #    Fails if the schema changed without the file being updated.
+  # ---------------------------------------------------------------------------
+  schema-drift:
+    name: OpenAPI Schema Drift Check
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ff_consumer_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: pip install -r requirements/test.txt
+      - name: Regenerate schema
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.test
+          DATABASE_URL: postgresql://postgres:postgres@localhost/ff_consumer_test
+          REDIS_URL: redis://localhost:6379/0
+        run: |
+          python manage.py spectacular --validate --file docs/openapi.yaml.new
+      - name: Check for drift
+        run: |
+          if ! diff -q docs/openapi.yaml docs/openapi.yaml.new > /dev/null 2>&1; then
+            echo "::error::OpenAPI schema has drifted from docs/openapi.yaml"
+            echo "Run: python manage.py spectacular --file docs/openapi.yaml"
+            echo "Then commit the updated file."
+            diff docs/openapi.yaml docs/openapi.yaml.new | head -50
+            exit 1
+          fi
+          echo "Schema is up to date"

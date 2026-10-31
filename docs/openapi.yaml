@@ -1,0 +1,2725 @@
+openapi: 3.0.3
+info:
+  title: Flavor Find Consumer API
+  version: 1.0.0
+  description: |-
+    The Flavor Find consumer backend. Serves the website and Android app. Owns accounts, pantries, meal plans, saved recipes, subscriptions. Food data comes from the Recipe Engine.
+
+    **Allergen disclaimer:** Allergen and dietary information is provided for informational purposes only. Always confirm with the kitchen before ordering.
+  contact:
+    email: api@flavorfind.co.ke
+  license:
+    name: Proprietary
+paths:
+  /v1/auth/login/:
+    post:
+      operationId: v1_auth_login_create
+      description: |-
+        Takes a set of user credentials and returns an access and refresh JSON web
+        token pair to prove the authentication of those credentials.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomTokenObtainPair'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CustomTokenObtainPair'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CustomTokenObtainPair'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomTokenObtainPair'
+          description: ''
+  /v1/auth/logout/:
+    post:
+      operationId: v1_auth_logout_create
+      description: Revoke the refresh token — effectively logs the user out.
+      summary: Logout
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/_LogoutRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/_LogoutRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/_LogoutRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /v1/auth/refresh/:
+    post:
+      operationId: v1_auth_refresh_create
+      description: |-
+        Takes a refresh type JSON web token and returns an access type JSON web
+        token if the refresh token is valid.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+  /v1/auth/register/:
+    post:
+      operationId: v1_auth_register_create
+      description: Create a new account with email, username, and password. A verification
+        email is sent automatically. Login works immediately — email verification
+        is not required to use the app.
+      summary: Register
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Register'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Register'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Register'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+          description: ''
+  /v1/auth/resend-verification/:
+    post:
+      operationId: v1_auth_resend_verification_create
+      description: POST /v1/auth/resend-verification/ — send a fresh verification
+        email.
+      summary: Resend verification email
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendVerification'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ResendVerification'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ResendVerification'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+          description: ''
+  /v1/auth/verify-email/:
+    post:
+      operationId: v1_auth_verify_email_create
+      description: Submit the token from the verification email to confirm the email
+        address.
+      summary: Verify email address
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailVerify'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EmailVerify'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EmailVerify'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+  /v1/budget/suggest/:
+    post:
+      operationId: v1_budget_suggest_create
+      description: Returns recipes whose estimated cost per serving is within the
+        given budget. Cost estimates come from the engine and are always labelled
+        as estimates. Diet and allergen exclusions from your profile are always applied.
+        Requires Plus subscription.
+      summary: Budget mode recipe suggestions
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetSuggest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BudgetSuggest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BudgetSuggest'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /v1/cooked/:
+    get:
+      operationId: v1_cooked_list
+      description: List and log cooked dishes.
+      summary: List cooking history
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CookLog'
+          description: ''
+    post:
+      operationId: v1_cooked_create
+      description: List and log cooked dishes.
+      summary: Log a cooked dish
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogCook'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LogCook'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LogCook'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CookLog'
+          description: ''
+  /v1/dishes/{slug}/:
+    get:
+      operationId: v1_dishes_retrieve
+      description: "Fetch full dish information from the engine. Cached per dataset
+        version. \n\n**Allergen information is for guidance only. Always confirm with
+        the kitchen before ordering.**"
+      summary: Dish detail
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /v1/dishes/{slug}/reviews/:
+    get:
+      operationId: v1_dishes_reviews_list
+      description: List and create reviews for a dish.
+      summary: List approved reviews for a dish
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Review'
+          description: ''
+    post:
+      operationId: v1_dishes_reviews_create
+      description: Submit a star rating and review for a dish. Queued for moderation.
+      summary: Submit a review
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReview'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CreateReview'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateReview'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+          description: ''
+  /v1/health/:
+    get:
+      operationId: v1_health_retrieve
+      description: Returns the health status of the consumer API.
+      summary: Health check
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /v1/ingredients/:
+    get:
+      operationId: v1_ingredients_retrieve
+      description: Fuzzy ingredient search for the autocomplete input. Cached 10 minutes.
+      summary: Ingredient autocomplete
+      parameters:
+      - in: query
+        name: lang
+        schema:
+          enum:
+          - en
+          - sw
+          type: string
+          default: en
+          minLength: 1
+        description: |-
+          * `en` - en
+          * `sw` - sw
+      - in: query
+        name: q
+        schema:
+          type: string
+          default: ''
+          maxLength: 200
+          minLength: 1
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /v1/me/:
+    get:
+      operationId: v1_me_retrieve
+      description: Current user's details.
+      summary: Get current user
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+  /v1/me/delete/:
+    delete:
+      operationId: v1_me_delete_destroy
+      description: Soft-deletes the account immediately. All personal data is purged
+        after a 35-day grace period.
+      summary: Delete account
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /v1/me/devices/:
+    get:
+      operationId: v1_me_devices_list
+      description: Register a device for push notifications and sync tracking.
+      summary: List user's devices
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/_DeviceResponse'
+          description: ''
+    post:
+      operationId: v1_me_devices_create
+      description: Register a device for push notifications and sync tracking.
+      summary: Register a device
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/_Device'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/_Device'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/_Device'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/_DeviceResponse'
+          description: ''
+  /v1/me/devices/{device_id}/:
+    delete:
+      operationId: v1_me_devices_destroy
+      description: Remove a registered device (remote logout).
+      summary: Remove a device
+      parameters:
+      - in: path
+        name: device_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /v1/me/diet/:
+    get:
+      operationId: v1_me_diet_list
+      description: GET and PATCH the current user's diet tags.
+      summary: Get diet tags
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProfileDiet'
+          description: ''
+    patch:
+      operationId: v1_me_diet_partial_update
+      description: Replaces the full set of diet tags. Allergen tags (source=allergen)
+        are always included on engine search calls. **Allergen information is for
+        guidance only. Always confirm with the kitchen.**
+      summary: Replace diet tags
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedProfileDietUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedProfileDietUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedProfileDietUpdate'
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProfileDiet'
+          description: ''
+  /v1/me/export/:
+    get:
+      operationId: v1_me_export_retrieve
+      description: 'Returns a JSON dump of all data the backend holds for the current
+        user: profile, diet tags, pantry, saved recipes, cook log, meal plans, submissions,
+        and consent records.'
+      summary: Export user data
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /v1/me/profile/:
+    get:
+      operationId: v1_me_profile_retrieve
+      description: GET and PATCH the current user's profile.
+      summary: Get profile
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+          description: ''
+    patch:
+      operationId: v1_me_profile_partial_update
+      description: GET and PATCH the current user's profile.
+      summary: Update profile
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedProfile'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedProfile'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedProfile'
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+          description: ''
+  /v1/meta/version/:
+    get:
+      operationId: v1_meta_version_retrieve
+      description: Returns the consumer backend version and the current engine dataset
+        version. The dataset_version changes when food data is updated in the engine.
+      summary: API and dataset version
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /v1/notifications/:
+    get:
+      operationId: v1_notifications_list
+      description: Returns the most recent 50 in-app notifications for the authenticated
+        user.
+      summary: List notifications
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Notification'
+          description: ''
+  /v1/notifications/{notification_id}/read/:
+    post:
+      operationId: v1_notifications_read_create
+      description: POST /v1/notifications/<id>/read/ — mark a notification as read.
+      summary: Mark notification as read
+      parameters:
+      - in: path
+        name: notification_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+          description: ''
+  /v1/notifications/preferences/:
+    get:
+      operationId: v1_notifications_preferences_retrieve
+      description: GET/PATCH /v1/notifications/preferences/ — notification preferences.
+      summary: Get notification preferences
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreference'
+          description: ''
+    patch:
+      operationId: v1_notifications_preferences_partial_update
+      description: GET/PATCH /v1/notifications/preferences/ — notification preferences.
+      summary: Update notification preferences
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationPreference'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationPreference'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationPreference'
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreference'
+          description: ''
+  /v1/pantry/:
+    get:
+      operationId: v1_pantry_list
+      description: Returns all ingredients in the current user's pantry.
+      summary: List pantry items
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PantryItem'
+          description: ''
+    post:
+      operationId: v1_pantry_create
+      description: Add an ingredient to the pantry. Use /v1/ingredients/ to resolve
+        the ingredient_id and ingredient_slug from the engine first.
+      summary: Add item to pantry
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddPantryItem'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AddPantryItem'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AddPantryItem'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryItem'
+          description: ''
+  /v1/pantry/{item_id}/:
+    delete:
+      operationId: v1_pantry_destroy
+      description: Delete a single pantry item.
+      summary: Remove item from pantry
+      parameters:
+      - in: path
+        name: item_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /v1/paystack/webhook/:
+    post:
+      operationId: v1_paystack_webhook_create
+      description: Paystack event webhook. Verified by HMAC-SHA512 signature. Processes
+        charge.success events to activate subscriptions.
+      summary: Paystack payment webhook
+      tags:
+      - v1
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /v1/plans/:
+    get:
+      operationId: v1_plans_list
+      description: Returns Free and Plus plan details.
+      summary: List billing plans
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Plan'
+          description: ''
+  /v1/plans/{plan_id}/shopping-list/:
+    post:
+      operationId: v1_plans_shopping_list_create
+      description: Calls the engine's missing endpoint for each dish in the plan and
+        generates a deduplicated shopping list. Requires Plus.
+      summary: Generate shopping list from meal plan
+      parameters:
+      - in: path
+        name: plan_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShoppingList'
+          description: ''
+  /v1/plans/{week}/:
+    get:
+      operationId: v1_plans_retrieve
+      description: 'Week format: YYYY-Www (e.g. 2026-W44). Requires Plus subscription.'
+      summary: Get meal plan for a week
+      parameters:
+      - in: path
+        name: week
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlan'
+          description: ''
+    put:
+      operationId: v1_plans_update
+      description: Replaces all entries for the week. Partial updates not supported
+        — send the full plan. Requires Plus.
+      summary: Set meal plan for a week
+      parameters:
+      - in: path
+        name: week
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealPlanWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MealPlanWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MealPlanWrite'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlan'
+          description: ''
+  /v1/regions/:
+    get:
+      operationId: v1_regions_retrieve
+      description: Returns all Kenyan counties and regions from the engine. Cached
+        24 hours.
+      summary: List regions (counties)
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /v1/resolve/:
+    post:
+      operationId: v1_resolve_create
+      description: Resolve free-text ingredient names to engine ingredient IDs. Handles
+        Swahili, Sheng, misspellings, and aliases. If a token is ambiguous (e.g. 'unga'
+        could be maize flour or wheat flour), the response includes choices — show
+        them to the user, never guess.
+      summary: Resolve ingredient tokens
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ResolveRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ResolveRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /v1/saved/:
+    get:
+      operationId: v1_saved_list
+      description: 'List and save recipes. Free tier: max 20. Plus: unlimited.'
+      summary: List saved recipes
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SavedRecipe'
+          description: ''
+    post:
+      operationId: v1_saved_create
+      description: 'Save a dish from the engine. Free tier: up to 20 saved recipes.
+        Plus: unlimited.'
+      summary: Save a recipe
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveRecipe'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SaveRecipe'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SaveRecipe'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedRecipe'
+          description: ''
+  /v1/saved/{recipe_id}/:
+    patch:
+      operationId: v1_saved_partial_update
+      description: Update note/collection or unsave a recipe.
+      summary: Update a saved recipe
+      parameters:
+      - in: path
+        name: recipe_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedSaveRecipe'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedSaveRecipe'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedSaveRecipe'
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedRecipe'
+          description: ''
+    delete:
+      operationId: v1_saved_destroy
+      description: Update note/collection or unsave a recipe.
+      summary: Unsave a recipe
+      parameters:
+      - in: path
+        name: recipe_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /v1/saved/collections/:
+    get:
+      operationId: v1_saved_collections_list
+      description: List and create collections.
+      summary: List collections
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Collection'
+          description: ''
+    post:
+      operationId: v1_saved_collections_create
+      description: List and create collections.
+      summary: Create a collection
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Collection'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Collection'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Collection'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Collection'
+          description: ''
+  /v1/saved/collections/{col_id}/:
+    patch:
+      operationId: v1_saved_collections_partial_update
+      description: Rename or delete a collection.
+      summary: Rename a collection
+      parameters:
+      - in: path
+        name: col_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedCollection'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedCollection'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedCollection'
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Collection'
+          description: ''
+    delete:
+      operationId: v1_saved_collections_destroy
+      description: Rename or delete a collection.
+      summary: Delete a collection
+      parameters:
+      - in: path
+        name: col_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /v1/search/:
+    post:
+      operationId: v1_search_create
+      description: "Search for recipes using your pantry and dietary preferences.
+        Your pantry is injected automatically. Diet tags and allergen exclusions from
+        your profile are ALWAYS applied. \n\n**Allergen disclaimer:** Allergen information
+        is for guidance only. Always confirm with the kitchen before ordering."
+      summary: Search for recipes
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /v1/shopping-lists/{list_id}/:
+    get:
+      operationId: v1_shopping_lists_retrieve
+      description: GET /v1/shopping-lists/<id>/
+      summary: Get a shopping list
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShoppingList'
+          description: ''
+  /v1/shopping-lists/{list_id}/items/{item_id}/:
+    patch:
+      operationId: v1_shopping_lists_items_partial_update
+      description: PATCH /v1/shopping-lists/<id>/items/<item_id>/ — check/uncheck
+        an item.
+      summary: Check or uncheck a shopping list item
+      parameters:
+      - in: path
+        name: item_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedShoppingItem'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedShoppingItem'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedShoppingItem'
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShoppingItem'
+          description: ''
+  /v1/shopping-lists/{list_id}/share/:
+    get:
+      operationId: v1_shopping_lists_share_retrieve
+      description: GET /v1/shopping-lists/<id>/share/ — WhatsApp-ready plain text.
+      summary: Get WhatsApp share text for a shopping list
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  text:
+                    type: string
+          description: ''
+  /v1/stories/:
+    get:
+      operationId: v1_stories_list
+      description: List all published Taste of 47 Counties editorial stories.
+      summary: List stories
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Story'
+          description: ''
+  /v1/stories/{slug}/:
+    get:
+      operationId: v1_stories_retrieve
+      description: GET /v1/stories/<slug>/ — single story.
+      summary: Story detail
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Story'
+          description: ''
+  /v1/submissions/:
+    get:
+      operationId: v1_submissions_list
+      description: Returns the current user's recipe submissions and their status.
+      summary: List own submissions
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Submission'
+          description: ''
+    post:
+      operationId: v1_submissions_create
+      description: Submit a recipe for review. The submission enters the moderation
+        queue. After approval, a Celery worker forwards it to the engine.
+      summary: Submit a recipe
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSubmission'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CreateSubmission'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateSubmission'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+          description: ''
+  /v1/submissions/{submission_id}/:
+    get:
+      operationId: v1_submissions_retrieve
+      description: Get a single submission.
+      summary: Get submission detail
+      parameters:
+      - in: path
+        name: submission_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+          description: ''
+  /v1/subscribe/:
+    post:
+      operationId: v1_subscribe_create
+      description: Initialises a Paystack transaction for the selected plan. Returns
+        {authorization_url, reference, payment_id}. Redirect the user to authorization_url
+        to complete payment. Paystack will POST a charge.success event to /v1/paystack/webhook/
+        when done.
+      summary: Subscribe to Plus via Paystack
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Subscribe'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Subscribe'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Subscribe'
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /v1/subscription/:
+    get:
+      operationId: v1_subscription_retrieve
+      description: GET /v1/subscription/ — current user's subscription status.
+      summary: Get subscription status
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+          description: ''
+  /v1/sync/pull/:
+    get:
+      operationId: v1_sync_pull_retrieve
+      description: Returns server-side changes since the given ISO timestamp. Requires
+        Plus.
+      summary: Pull server changes since last sync
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /v1/sync/push/:
+    post:
+      operationId: v1_sync_push_create
+      description: Apply changes made offline to the server. Returns applied change
+        IDs and any conflicts. Requires Plus.
+      summary: Push offline changes
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncPush'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SyncPush'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SyncPush'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+components:
+  schemas:
+    AddPantryItem:
+      type: object
+      description: Add an ingredient to the pantry by providing engine ingredient
+        details.
+      properties:
+        ingredient_id:
+          type: string
+          maxLength: 36
+        ingredient_slug:
+          type: string
+          maxLength: 200
+        display_name:
+          type: string
+          maxLength: 200
+        expires_on:
+          type: string
+          format: date
+          nullable: true
+      required:
+      - display_name
+      - ingredient_id
+      - ingredient_slug
+    BudgetSuggest:
+      type: object
+      properties:
+        budget_kes:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          description: Maximum cost per serving in KES (estimate only).
+        servings:
+          type: integer
+          maximum: 20
+          minimum: 1
+          default: 1
+        mode:
+          allOf:
+          - $ref: '#/components/schemas/ModeEnum'
+          default: strict
+        lang:
+          allOf:
+          - $ref: '#/components/schemas/LanguageEnum'
+          default: en
+        limit:
+          type: integer
+          maximum: 50
+          minimum: 1
+          default: 20
+      required:
+      - budget_kes
+    Change:
+      type: object
+      description: A single change from the client.
+      properties:
+        change_id:
+          type: string
+          format: uuid
+        changed_at:
+          type: string
+          format: date-time
+        entity_type:
+          $ref: '#/components/schemas/EntityTypeEnum'
+        entity_id:
+          type: string
+          format: uuid
+        operation:
+          $ref: '#/components/schemas/OperationEnum'
+        payload:
+          type: object
+          additionalProperties: {}
+      required:
+      - change_id
+      - changed_at
+      - entity_id
+      - entity_type
+      - operation
+    ChannelEnum:
+      enum:
+      - push
+      - email
+      - in_app
+      type: string
+      description: |-
+        * `push` - Push
+        * `email` - Email
+        * `in_app` - In-App
+    Collection:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 200
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - name
+      - updated_at
+    CookLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        dish_id:
+          type: string
+          maxLength: 36
+        dish_slug:
+          type: string
+          maxLength: 200
+        cooked_at:
+          type: string
+          format: date-time
+          readOnly: true
+        rating:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          nullable: true
+        note:
+          type: string
+      required:
+      - cooked_at
+      - dish_id
+      - dish_slug
+      - id
+    CreateReview:
+      type: object
+      description: Input for POST /v1/dishes/<slug>/reviews/.
+      properties:
+        stars:
+          type: integer
+          maximum: 5
+          minimum: 1
+        text:
+          type: string
+          default: ''
+      required:
+      - stars
+    CreateSubmission:
+      type: object
+      description: Input for POST /v1/submissions/.
+      properties:
+        name_en:
+          type: string
+          maxLength: 300
+        name_sw:
+          type: string
+          default: ''
+          maxLength: 300
+        description:
+          type: string
+        ingredients:
+          type: array
+          items: {}
+          maxItems: 50
+          minItems: 1
+        steps:
+          type: array
+          items:
+            type: string
+          maxItems: 30
+          minItems: 1
+        meal_type:
+          allOf:
+          - $ref: '#/components/schemas/MealTypeEnum'
+          default: any
+        region_slug:
+          type: string
+          default: ''
+          maxLength: 100
+        notes:
+          type: string
+          default: ''
+      required:
+      - description
+      - ingredients
+      - name_en
+      - steps
+    CustomTokenObtainPair:
+      type: object
+      description: Add user language to the JWT payload.
+      properties:
+        email:
+          type: string
+          writeOnly: true
+        password:
+          type: string
+          writeOnly: true
+      required:
+      - email
+      - password
+    DayEnum:
+      enum:
+      - mon
+      - tue
+      - wed
+      - thu
+      - fri
+      - sat
+      - sun
+      type: string
+      description: |-
+        * `mon` - Monday
+        * `tue` - Tuesday
+        * `wed` - Wednesday
+        * `thu` - Thursday
+        * `fri` - Friday
+        * `sat` - Saturday
+        * `sun` - Sunday
+    EmailVerify:
+      type: object
+      description: Verify an email address using the token from the verification email.
+      properties:
+        token:
+          type: string
+      required:
+      - token
+    EntityTypeEnum:
+      enum:
+      - pantry_item
+      - saved_recipe
+      - cook_log
+      - meal_plan_entry
+      - shopping_item
+      type: string
+      description: |-
+        * `pantry_item` - pantry_item
+        * `saved_recipe` - saved_recipe
+        * `cook_log` - cook_log
+        * `meal_plan_entry` - meal_plan_entry
+        * `shopping_item` - shopping_item
+    LanguageEnum:
+      enum:
+      - en
+      - sw
+      type: string
+      description: |-
+        * `en` - en
+        * `sw` - sw
+    LogCook:
+      type: object
+      description: Input for logging a cooked dish.
+      properties:
+        dish_id:
+          type: string
+          maxLength: 36
+        dish_slug:
+          type: string
+          maxLength: 200
+        rating:
+          type: integer
+          maximum: 5
+          minimum: 1
+          nullable: true
+        note:
+          type: string
+          default: ''
+      required:
+      - dish_id
+      - dish_slug
+    MealPlan:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        week_start:
+          type: string
+          format: date
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealPlanEntry'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - entries
+      - id
+      - updated_at
+      - week_start
+    MealPlanEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        day:
+          $ref: '#/components/schemas/DayEnum'
+        meal_type:
+          $ref: '#/components/schemas/MealPlanEntryMealTypeEnum'
+        dish_id:
+          type: string
+          maxLength: 36
+        dish_slug:
+          type: string
+          maxLength: 200
+        servings:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        note:
+          type: string
+        position:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+      required:
+      - day
+      - dish_id
+      - dish_slug
+      - id
+      - meal_type
+    MealPlanEntryMealTypeEnum:
+      enum:
+      - breakfast
+      - lunch
+      - dinner
+      - snack
+      type: string
+      description: |-
+        * `breakfast` - Breakfast
+        * `lunch` - Lunch
+        * `dinner` - Dinner
+        * `snack` - Snack
+    MealPlanWrite:
+      type: object
+      description: Input for PUT /v1/plans/<week>/.
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealPlanEntry'
+      required:
+      - entries
+    MealTypeEnum:
+      enum:
+      - breakfast
+      - lunch
+      - dinner
+      - snack
+      - dessert
+      - drink
+      - any
+      type: string
+      description: |-
+        * `breakfast` - breakfast
+        * `lunch` - lunch
+        * `dinner` - dinner
+        * `snack` - snack
+        * `dessert` - dessert
+        * `drink` - drink
+        * `any` - any
+    ModeEnum:
+      enum:
+      - strict
+      - explore
+      type: string
+      description: |-
+        * `strict` - strict
+        * `explore` - explore
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        channel:
+          allOf:
+          - $ref: '#/components/schemas/ChannelEnum'
+          readOnly: true
+        type:
+          type: string
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+        body:
+          type: string
+          readOnly: true
+        data:
+          readOnly: true
+          nullable: true
+        read_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        sent_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - body
+      - channel
+      - created_at
+      - data
+      - id
+      - read_at
+      - sent_at
+      - title
+      - type
+    NotificationPreference:
+      type: object
+      properties:
+        push_enabled:
+          type: boolean
+        email_enabled:
+          type: boolean
+        quiet_hours_start:
+          type: string
+          format: time
+          nullable: true
+        quiet_hours_end:
+          type: string
+          format: time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - updated_at
+    NullEnum:
+      enum:
+      - null
+    OperationEnum:
+      enum:
+      - create
+      - update
+      - delete
+      type: string
+      description: |-
+        * `create` - create
+        * `update` - update
+        * `delete` - delete
+    PantryItem:
+      type: object
+      description: Read-only pantry item representation.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        ingredient_id:
+          type: string
+          readOnly: true
+        ingredient_slug:
+          type: string
+          readOnly: true
+        display_name:
+          type: string
+          readOnly: true
+        added_at:
+          type: string
+          format: date-time
+          readOnly: true
+        expires_on:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+      required:
+      - added_at
+      - display_name
+      - expires_on
+      - id
+      - ingredient_id
+      - ingredient_slug
+    PatchedCollection:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 200
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    PatchedNotificationPreference:
+      type: object
+      properties:
+        push_enabled:
+          type: boolean
+        email_enabled:
+          type: boolean
+        quiet_hours_start:
+          type: string
+          format: time
+          nullable: true
+        quiet_hours_end:
+          type: string
+          format: time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    PatchedProfile:
+      type: object
+      properties:
+        household_size:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        region_slug:
+          type: string
+          maxLength: 100
+        budget_kes_per_meal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    PatchedProfileDietUpdate:
+      type: object
+      description: Replaces the user's full diet tag list.
+      properties:
+        diet_tags:
+          type: array
+          items:
+            type: string
+            maxLength: 100
+          description: List of engine dietary tag slugs (e.g. 'vegetarian', 'nut-free').
+    PatchedSaveRecipe:
+      type: object
+      description: Input for saving a recipe.
+      properties:
+        dish_id:
+          type: string
+          maxLength: 36
+        dish_slug:
+          type: string
+          maxLength: 200
+        collection_id:
+          type: string
+          format: uuid
+          nullable: true
+        note:
+          type: string
+          default: ''
+    PatchedShoppingItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        ingredient_id:
+          type: string
+          readOnly: true
+        ingredient_slug:
+          type: string
+          readOnly: true
+        display_name:
+          type: string
+          readOnly: true
+        quantity_note:
+          type: string
+          maxLength: 200
+        checked:
+          type: boolean
+        price_estimate_kes:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        position:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+    Plan:
+      type: object
+      properties:
+        code:
+          type: string
+          maxLength: 20
+        name:
+          type: string
+          maxLength: 100
+        price_kes:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        features: {}
+      required:
+      - code
+      - name
+    PlanCodeEnum:
+      enum:
+      - plus
+      type: string
+      description: '* `plus` - plus'
+    PlatformEnum:
+      enum:
+      - android
+      - ios
+      - web
+      type: string
+      description: |-
+        * `android` - android
+        * `ios` - ios
+        * `web` - web
+    Profile:
+      type: object
+      properties:
+        household_size:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        region_slug:
+          type: string
+          maxLength: 100
+        budget_kes_per_meal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - updated_at
+    ProfileDiet:
+      type: object
+      properties:
+        diet_tag_slug:
+          type: string
+          maxLength: 100
+        source:
+          $ref: '#/components/schemas/SourceEnum'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - diet_tag_slug
+    Register:
+      type: object
+      description: 'Registration: email + username + password.'
+      properties:
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+          maxLength: 50
+          minLength: 3
+        password:
+          type: string
+          writeOnly: true
+          minLength: 8
+        language:
+          allOf:
+          - $ref: '#/components/schemas/LanguageEnum'
+          default: en
+        terms_version:
+          type: string
+          default: 2026-10
+      required:
+      - email
+      - password
+      - username
+    ResendVerification:
+      type: object
+      description: Request a new verification email.
+      properties:
+        email:
+          type: string
+          format: email
+      required:
+      - email
+    ResolveRequest:
+      type: object
+      description: Input for POST /v1/resolve/.
+      properties:
+        tokens:
+          type: array
+          items:
+            type: string
+            maxLength: 200
+          description: Free-text ingredient tokens to resolve (e.g. 'nyanya', 'unga').
+          maxItems: 30
+          minItems: 1
+        lang:
+          allOf:
+          - $ref: '#/components/schemas/LanguageEnum'
+          default: en
+      required:
+      - tokens
+    Review:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        dish_id:
+          type: string
+          maxLength: 36
+        dish_slug:
+          type: string
+          maxLength: 200
+        stars:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        text:
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ReviewStatusEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - dish_id
+      - dish_slug
+      - id
+      - stars
+      - status
+    ReviewStatusEnum:
+      enum:
+      - pending
+      - approved
+      - rejected
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `approved` - Approved
+        * `rejected` - Rejected
+    SaveRecipe:
+      type: object
+      description: Input for saving a recipe.
+      properties:
+        dish_id:
+          type: string
+          maxLength: 36
+        dish_slug:
+          type: string
+          maxLength: 200
+        collection_id:
+          type: string
+          format: uuid
+          nullable: true
+        note:
+          type: string
+          default: ''
+      required:
+      - dish_id
+      - dish_slug
+    SavedRecipe:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        dish_id:
+          type: string
+          maxLength: 36
+        dish_slug:
+          type: string
+          maxLength: 200
+        dataset_version:
+          type: string
+          readOnly: true
+        collection:
+          type: string
+          format: uuid
+          nullable: true
+        collection_name:
+          type: string
+          readOnly: true
+          nullable: true
+        note:
+          type: string
+        saved_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - collection_name
+      - dataset_version
+      - dish_id
+      - dish_slug
+      - id
+      - saved_at
+    SearchRequest:
+      type: object
+      description: Input for POST /v1/search/.
+      properties:
+        ingredients:
+          type: array
+          items:
+            type: string
+            maxLength: 200
+          description: Ingredient names or slugs. Your pantry is always included automatically.
+          maxItems: 30
+        mode:
+          allOf:
+          - $ref: '#/components/schemas/ModeEnum'
+          default: strict
+          description: |-
+            strict: only exact/can_make results. explore: also includes 'almost' results (1-2 missing ingredients).
+
+            * `strict` - strict
+            * `explore` - explore
+        lang:
+          allOf:
+          - $ref: '#/components/schemas/LanguageEnum'
+          default: en
+        limit:
+          type: integer
+          maximum: 50
+          minimum: 1
+          default: 20
+        meal_type:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/MealTypeEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        exclude:
+          type: array
+          items:
+            type: string
+            maxLength: 200
+          description: Ingredient slugs to exclude from results.
+    ShoppingItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        ingredient_id:
+          type: string
+          readOnly: true
+        ingredient_slug:
+          type: string
+          readOnly: true
+        display_name:
+          type: string
+          readOnly: true
+        quantity_note:
+          type: string
+          maxLength: 200
+        checked:
+          type: boolean
+        price_estimate_kes:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        position:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+      required:
+      - display_name
+      - id
+      - ingredient_id
+      - ingredient_slug
+    ShoppingList:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        plan:
+          type: string
+          format: uuid
+          nullable: true
+        name:
+          type: string
+          maxLength: 200
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShoppingItem'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - items
+      - updated_at
+    SourceEnum:
+      enum:
+      - user_set
+      - allergen
+      type: string
+      description: |-
+        * `user_set` - User Set
+        * `allergen` - Allergen
+    Story:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        slug:
+          type: string
+          maxLength: 200
+          pattern: ^[-a-zA-Z0-9_]+$
+        title_en:
+          type: string
+          maxLength: 300
+        title_sw:
+          type: string
+          maxLength: 300
+        body_en:
+          type: string
+        body_sw:
+          type: string
+        region_slugs:
+          type: string
+          description: Comma-separated engine region slugs (e.g. 'mombasa,kilifi,lamu').
+          maxLength: 500
+        region_slug_list:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        author:
+          type: string
+          maxLength: 200
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - body_en
+      - id
+      - region_slug_list
+      - slug
+      - title_en
+    Submission:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        payload: {}
+        status:
+          allOf:
+          - $ref: '#/components/schemas/SubmissionStatusEnum'
+          readOnly: true
+        engine_submission_id:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        reason:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - engine_submission_id
+      - id
+      - payload
+      - reason
+      - status
+      - updated_at
+    SubmissionStatusEnum:
+      enum:
+      - draft
+      - sent
+      - in_review
+      - accepted
+      - rejected
+      type: string
+      description: |-
+        * `draft` - Draft
+        * `sent` - Sent to Engine
+        * `in_review` - In Review
+        * `accepted` - Accepted
+        * `rejected` - Rejected
+    Subscribe:
+      type: object
+      description: Input for POST /v1/subscribe/.
+      properties:
+        plan_code:
+          allOf:
+          - $ref: '#/components/schemas/PlanCodeEnum'
+          default: plus
+    Subscription:
+      type: object
+      properties:
+        plan_code:
+          type: string
+        plan_name:
+          type: string
+        status:
+          type: string
+        trial_ends_at:
+          type: string
+          format: date-time
+          nullable: true
+        renews_at:
+          type: string
+          format: date-time
+          nullable: true
+        cancelled_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - cancelled_at
+      - plan_code
+      - plan_name
+      - renews_at
+      - status
+      - trial_ends_at
+    SyncPush:
+      type: object
+      properties:
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Change'
+          maxItems: 500
+      required:
+      - changes
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+      required:
+      - access
+      - refresh
+    TokenResponse:
+      type: object
+      description: Shape of the token response after login.
+      properties:
+        access:
+          type: string
+        refresh:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+      - access
+      - refresh
+      - user
+    User:
+      type: object
+      description: Read-only representation of the current user.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+        username:
+          type: string
+          readOnly: true
+        language:
+          allOf:
+          - $ref: '#/components/schemas/UserLanguageEnum'
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/UserStatusEnum'
+          readOnly: true
+        email_verified:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - email
+      - email_verified
+      - id
+      - language
+      - status
+      - username
+    UserLanguageEnum:
+      enum:
+      - en
+      - sw
+      type: string
+      description: |-
+        * `en` - English
+        * `sw` - Swahili
+    UserStatusEnum:
+      enum:
+      - active
+      - suspended
+      - deleted
+      type: string
+      description: |-
+        * `active` - Active
+        * `suspended` - Suspended
+        * `deleted` - Deleted
+    _Device:
+      type: object
+      properties:
+        platform:
+          $ref: '#/components/schemas/PlatformEnum'
+        push_token:
+          type: string
+          default: ''
+      required:
+      - platform
+    _DeviceResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        platform:
+          type: string
+        push_token:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - created_at
+      - id
+      - platform
+      - push_token
+    _LogoutRequest:
+      type: object
+      properties:
+        refresh:
+          type: string
+      required:
+      - refresh
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
