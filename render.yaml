@@ -39,6 +39,18 @@ services:
         value: https://flavorfind.co.ke,https://www.flavorfind.co.ke
       - key: SENTRY_DSN
         sync: false
+      - key: RESEND_API_KEY
+        sync: false   # Set manually in Render dashboard
+      - key: RESEND_FROM_EMAIL
+        value: "Flavor Find <no-reply@flavorfind.co.ke>"
+      - key: FRONTEND_URL
+        value: https://flavorfind.co.ke
+      - key: PAYSTACK_SECRET_KEY
+        sync: false   # Set manually in Render dashboard
+      - key: PAYSTACK_PUBLIC_KEY
+        sync: false   # Set manually in Render dashboard
+      - key: PAYSTACK_CALLBACK_URL
+        value: https://ff-consumer.onrender.com/v1/paystack/webhook/
 
   - type: redis
     name: ff-consumer-redis
