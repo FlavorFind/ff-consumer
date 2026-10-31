@@ -1,8 +1,10 @@
 name: Deploy to Staging
 
+# DISABLED — self-hosted deploy via Tailscale/SSH not yet configured.
+# Render auto-deploys from main. Re-enable this once the staging server
+# SSH keys and Tailscale OAuth client are set in repo secrets.
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:   # manual trigger only — never runs automatically
 
 concurrency:
   group: deploy-staging
@@ -12,19 +14,17 @@ jobs:
   deploy:
     name: Deploy to self-hosted staging
     runs-on: ubuntu-latest
-    needs: []   # Runs after CI passes (branch protection enforces CI)
 
     steps:
       - uses: actions/checkout@v4
 
-      # Connect to Tailscale so we can reach the staging server
       - name: Connect to Tailscale
         uses: tailscale/github-action@v2
         with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
-          args: --accept-routes
+          oauth-client-id: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TAILSCALE_OAUTH_SECRET }}
+          tags: tag:ci
 
-      # Deploy via SSH
       - name: Deploy to staging server
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -34,30 +34,16 @@ jobs:
           script: |
             set -e
             cd /home/mayday/ff-consumer
-
-            # Pull latest code
             git fetch origin
             git checkout main
             git reset --hard origin/main
-
-            # Install/update dependencies
             .venv/bin/pip install -q -r requirements/prod.txt --prefer-binary
-
-            # Run migrations
             .venv/bin/python manage.py migrate --no-input
-
-            # Collect static files
             .venv/bin/python manage.py collectstatic --no-input
-
-            # Seed plans (idempotent)
             .venv/bin/python manage.py seed_plans
-
-            # Restart gunicorn
             sudo systemctl reload gunicorn-ff-consumer || sudo systemctl restart gunicorn-ff-consumer
-
             echo "Deploy complete."
 
-      # Smoke tests run from the server (Cloudflare blocks GitHub runner IPs)
       - name: Smoke tests
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -66,11 +52,6 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             BASE=http://localhost:8001
-
-            echo "Health check..."
             curl -sf "$BASE/v1/health/" | grep '"status":"ok"'
-
-            echo "Version check..."
             curl -sf "$BASE/v1/meta/version/" | grep '"consumer_version"'
-
             echo "Smoke tests passed."
