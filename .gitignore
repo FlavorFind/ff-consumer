@@ -54,3 +54,6 @@ secrets/
 .DS_Store
 Thumbs.db
 test.db
+
+# Load test results (JSON output from k6)
+loadtests/results/
