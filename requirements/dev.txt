@@ -1,0 +1,30 @@
+-r base.txt
+
+# Testing
+pytest==8.3.3
+pytest-django==4.9.0
+pytest-cov==5.0.0
+pytest-mock==3.14.0
+factory-boy==3.3.1
+hypothesis==6.112.1
+Faker==30.3.0
+responses==0.25.3
+
+# Load testing
+locust==2.31.8
+
+# API contract testing
+schemathesis==3.34.0
+
+# Code quality
+ruff==0.7.0
+mypy==1.11.2
+django-stubs==5.1.0
+djangorestframework-stubs==3.15.1
+pre-commit==4.7.0
+bandit==1.8.3
+pip-audit==2.7.3
+
+# Debug
+django-debug-toolbar==4.4.6
+ipython==9.17.1

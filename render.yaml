@@ -1,0 +1,52 @@
+services:
+  - type: web
+    name: ff-consumer
+    runtime: python
+    region: frankfurt
+    plan: free
+    buildCommand: >-
+      pip install -r requirements/prod.txt &&
+      python manage.py migrate --no-input &&
+      python manage.py collectstatic --no-input &&
+      python manage.py seed_plans
+    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    healthCheckPath: /v1/health/
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.prod
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: flavorfind-consumer-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: ff-consumer-redis
+          type: redis
+          property: connectionString
+      - key: ENGINE_BASE_URL
+        value: https://engine.flavorfind.co.ke
+      - key: ENGINE_API_KEY
+        sync: false   # Set manually in Render dashboard — never in code
+      - key: ENGINE_INTERNAL_KEY
+        sync: false   # Set manually in Render dashboard — never in code
+      - key: CONSUMER_VERSION
+        sync: false
+      - key: ALLOWED_HOSTS
+        value: ff-consumer.onrender.com
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://flavorfind.co.ke,https://www.flavorfind.co.ke
+      - key: SENTRY_DSN
+        sync: false
+
+  - type: redis
+    name: ff-consumer-redis
+    region: frankfurt
+    plan: free
+
+databases:
+  - name: flavorfind-consumer-db
+    databaseName: flavorfind_consumer_db
+    plan: free
+    region: frankfurt

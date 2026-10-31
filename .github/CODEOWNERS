@@ -1,0 +1,22 @@
+# CODEOWNERS — ff-consumer
+#
+# Security-sensitive apps require a review from the security owner
+# before any PR can merge to main.
+#
+# Format: <pattern>  <owner>
+# Owner must be a GitHub user or team in the FlavorFind org.
+
+# Default: tech lead reviews everything
+*                                   @Dog254
+
+# Security-sensitive apps — require explicit review
+apps/accounts/                      @Dog254
+apps/billing/                       @Dog254
+apps/engine_client/                 @Dog254
+
+# CI/CD workflows — only tech lead can approve pipeline changes
+.github/workflows/                  @Dog254
+
+# Deployment configs
+render.yaml                         @Dog254
+docker/                             @Dog254

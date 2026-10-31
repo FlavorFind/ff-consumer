@@ -1,0 +1,7 @@
+-r base.txt
+
+# Production server
+gunicorn==23.0.0
+
+# Security
+django-csp==3.8

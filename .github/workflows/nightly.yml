@@ -1,0 +1,32 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "0 23 * * *"   # 2 AM EAT (UTC+3) = 23:00 UTC
+  workflow_dispatch:        # allow manual trigger
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  dependency-scan:
+    name: Dependency Advisory Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install pip-audit==2.7.3
+      - run: pip-audit -r requirements/base.txt -r requirements/prod.txt
+
+  extended-secret-scan:
+    name: Full History Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

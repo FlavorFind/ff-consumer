@@ -1,0 +1,211 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ─────────────────────────────────────────────────
+  # 1. Lint + format
+  # ─────────────────────────────────────────────────
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install ruff
+        run: pip install ruff==0.7.0
+      - name: Ruff check
+        run: ruff check .
+      - name: Ruff format check
+        run: ruff format --check .
+
+  # ─────────────────────────────────────────────────
+  # 2. Secret scan
+  # ─────────────────────────────────────────────────
+  secret-scan:
+    name: Secret Scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ─────────────────────────────────────────────────
+  # 3. SAST (bandit)
+  # ─────────────────────────────────────────────────
+  sast:
+    name: SAST (bandit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install bandit
+        run: pip install bandit==1.8.3
+      - name: Run bandit
+        run: |
+          bandit -r apps/ -ll --skip B101,B106,B108,B311 \
+            -x apps/accounts/tests,apps/api/tests,apps/engine_client/tests,apps/billing/tests
+
+  # ─────────────────────────────────────────────────
+  # 4. Dependency audit
+  # ─────────────────────────────────────────────────
+  dependency-audit:
+    name: Dependency Audit (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install pip-audit
+        run: pip install pip-audit==2.7.3
+      - name: Audit base dependencies
+        run: pip-audit -r requirements/base.txt -r requirements/prod.txt
+
+  # ─────────────────────────────────────────────────
+  # 5. Tests + coverage
+  # ─────────────────────────────────────────────────
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ff_consumer_test
+          POSTGRES_USER: ff_consumer
+          POSTGRES_PASSWORD: ff_consumer_pass
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements/dev.txt
+
+      - name: Run tests
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.test
+          SECRET_KEY: ci-test-secret-key-not-for-production
+          DATABASE_URL: postgres://ff_consumer:ff_consumer_pass@localhost:5432/ff_consumer_test
+          REDIS_URL: redis://localhost:6379/0
+          ENGINE_BASE_URL: http://engine.test
+          ENGINE_API_KEY: ffk_test_0000000000000000000000000000000000000000
+          ENGINE_INTERNAL_KEY: ffk_internal_test_000000000000000000000000000000000000000
+        run: |
+          pytest --cov=apps --cov-report=term-missing --cov-report=xml \
+            --cov-fail-under=85 -q
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          file: coverage.xml
+          fail_ci_if_error: false
+
+  # ─────────────────────────────────────────────────
+  # 6. Migration check
+  # ─────────────────────────────────────────────────
+  migration-check:
+    name: Migration Check
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ff_consumer_test
+          POSTGRES_USER: ff_consumer
+          POSTGRES_PASSWORD: ff_consumer_pass
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements/prod.txt
+      - name: Check for missing migrations
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.test
+          SECRET_KEY: ci-migration-check
+          DATABASE_URL: postgres://ff_consumer:ff_consumer_pass@localhost:5432/ff_consumer_test
+          REDIS_URL: redis://localhost:6379/0
+        run: python manage.py migrate --check
+
+  # ─────────────────────────────────────────────────
+  # 7. OpenAPI schema validation
+  # ─────────────────────────────────────────────────
+  schema-validation:
+    name: OpenAPI Schema Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements/dev.txt
+      - name: Validate schema
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.test
+          SECRET_KEY: ci-schema-check
+          DATABASE_URL: sqlite:////tmp/schema_check.db
+          REDIS_URL: redis://localhost:6379/0
+        run: python manage.py spectacular --validate --fail-on-warn
+
+  # ─────────────────────────────────────────────────
+  # 8. Docker build
+  # ─────────────────────────────────────────────────
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -f docker/Dockerfile -t ff-consumer:ci .
