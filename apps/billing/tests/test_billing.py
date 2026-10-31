@@ -42,7 +42,9 @@ def plus_user(db):
     from apps.billing.models import Plan, Subscription
 
     User = get_user_model()
-    u = User.objects.create_user(email="plus@example.com", password="testpass123")
+    u = User.objects.create_user(
+        email="plus@example.com", username="plususer", password="testpass123"
+    )
     plan, _ = Plan.objects.get_or_create(
         code="plus",
         defaults={"name": "Plus", "price_kes": 199, "features": []},

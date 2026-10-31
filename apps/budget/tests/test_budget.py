@@ -40,6 +40,7 @@ def plus_user(db):
     User = get_user_model()
     user = User.objects.create_user(
         email="budget_plus@example.com",
+        username="budgetplus",
         password="testpass",
         status=User.Status.ACTIVE,
     )

@@ -21,6 +21,7 @@ def plus_user(db):
     User = get_user_model()
     user = User.objects.create_user(
         email="plus@example.com",
+        username="plannerplus",
         password="testpass",
         status=User.Status.ACTIVE,
     )
@@ -254,7 +255,7 @@ class TestShoppingListGenerateView:
 
         User = get_user_model()
         user = User.objects.create_user(
-            email="free2@example.com", password="x", status=User.Status.ACTIVE
+            email="free2@example.com", username="freeuser2", password="x", status=User.Status.ACTIVE
         )
         plan = MealPlan.objects.create(user=user, week_start="2026-10-26")
         assert auth_client.post(f"/v1/plans/{plan.id}/shopping-list/").status_code == 403

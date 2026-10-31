@@ -31,4 +31,4 @@ qrcode==8.2
 Pillow==13.0.0
 python-slugify==8.0.4
 whitenoise==6.8.2
-phonenumbers==8.13.50
+# No longer needed (phone OTP removed)

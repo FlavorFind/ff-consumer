@@ -108,13 +108,13 @@ def purge_user_data_after_grace_period(user_id: str):
     except Exception as exc:
         logger.warning("purge_user_data devices error for %s: %s", user_id, exc)
 
-    # Purge OTP requests
+    # Purge email verifications
     try:
-        from apps.accounts.models import OTPRequest
+        from apps.accounts.models import EmailVerification
 
-        OTPRequest.objects.filter(phone=user.phone).delete()
+        EmailVerification.objects.filter(user=user).delete()
     except Exception as exc:
-        logger.warning("purge_user_data otp error for %s: %s", user_id, exc)
+        logger.warning("purge_user_data email_verification error for %s: %s", user_id, exc)
 
     # Purge profile
     try:
@@ -135,9 +135,8 @@ def purge_user_data_after_grace_period(user_id: str):
 
     # Anonymise the user record — keep the row for FK integrity in audit log
     user.email = f"deleted_{user_id}@deleted.invalid"
-    user.phone = None
     user.set_unusable_password()
-    user.save(update_fields=["email", "phone", "password", "updated_at"])
+    user.save(update_fields=["email", "password", "updated_at"])
 
     log_audit_event(
         action="account_purged",

@@ -287,6 +287,18 @@ PAYSTACK_CALLBACK_URL = env(
 )
 
 # ---------------------------------------------------------------------------
+# Email — Resend
+# ---------------------------------------------------------------------------
+RESEND_API_KEY = env("RESEND_API_KEY", default="")
+# Use onboarding@resend.dev (Resend shared domain) until flavorfind.co.ke is verified
+RESEND_FROM_EMAIL = env("RESEND_FROM_EMAIL", default="Flavor Find <onboarding@resend.dev>")
+
+# ---------------------------------------------------------------------------
+# Frontend URL (used in email verification links)
+# ---------------------------------------------------------------------------
+FRONTEND_URL = env("FRONTEND_URL", default="https://flavorfind.co.ke")
+
+# ---------------------------------------------------------------------------
 # Internationalisation
 # ---------------------------------------------------------------------------
 LANGUAGE_CODE = "en-us"

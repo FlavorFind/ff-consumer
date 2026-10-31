@@ -7,19 +7,22 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.serializers import (
-    OTPRequestSerializer,
-    OTPVerifySerializer,
+    EmailVerifySerializer,
     RegisterSerializer,
+    ResendVerificationSerializer,
     TokenResponseSerializer,
     UserSerializer,
 )
-from apps.accounts.services import get_tokens_for_user, request_otp, verify_otp
+from apps.accounts.services import (
+    get_tokens_for_user,
+    send_verification_email,
+    verify_email_token,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,19 +30,36 @@ User = get_user_model()
 
 
 class RegisterView(APIView):
-    """Register a new user with email and password."""
+    """Register a new user with email, username, and password.
+
+    Sends a verification email via Resend after successful registration.
+    The user can log in immediately but email_verified will be False until
+    they click the verification link.
+    """
 
     permission_classes = [AllowAny]
 
     @extend_schema(
         request=RegisterSerializer,
         responses={201: TokenResponseSerializer},
-        summary="Register with email and password",
+        summary="Register",
+        description=(
+            "Create a new account with email, username, and password. "
+            "A verification email is sent automatically. "
+            "Login works immediately — email verification is not required to use the app."
+        ),
     )
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+
+        # Send verification email — failure here does not block registration
+        try:
+            send_verification_email(user)
+        except Exception as exc:
+            logger.error("Failed to send verification email to %s: %s", user.email, exc)
+
         tokens = get_tokens_for_user(user)
         return Response(
             {**tokens, "user": UserSerializer(user).data},
@@ -47,65 +67,62 @@ class RegisterView(APIView):
         )
 
 
-class OTPRequestView(APIView):
-    """Request a phone OTP — step 1 of phone login."""
+class EmailVerifyView(APIView):
+    """POST /v1/auth/verify-email/ — verify email with token from the email link."""
 
     permission_classes = [AllowAny]
 
-    class OTPThrottle(ScopedRateThrottle):
-        scope = "otp"
-
-    throttle_classes = [OTPThrottle]
-
     @extend_schema(
-        request=OTPRequestSerializer,
-        responses={200: {"type": "object", "properties": {"detail": {"type": "string"}}}},
-        summary="Request phone OTP",
+        request=EmailVerifySerializer,
+        responses={200: UserSerializer},
+        summary="Verify email address",
+        description="Submit the token from the verification email to confirm the email address.",
     )
     def post(self, request):
-        serializer = OTPRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        phone = serializer.validated_data["phone"]
+        ser = EmailVerifySerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
         try:
-            request_otp(phone)
+            user = verify_email_token(ser.validated_data["token"])
         except ValueError as exc:
             return Response(
-                {"error": {"code": "otp_rate_limit", "message": str(exc)}},
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-            )
-        return Response({"detail": "Verification code sent."})
-
-
-class OTPVerifyView(APIView):
-    """Verify the OTP and return JWT tokens — step 2 of phone login."""
-
-    permission_classes = [AllowAny]
-
-    class OTPThrottle(ScopedRateThrottle):
-        scope = "otp"
-
-    throttle_classes = [OTPThrottle]
-
-    @extend_schema(
-        request=OTPVerifySerializer,
-        responses={200: TokenResponseSerializer},
-        summary="Verify phone OTP and get tokens",
-    )
-    def post(self, request):
-        serializer = OTPVerifySerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        try:
-            user = verify_otp(
-                serializer.validated_data["phone"],
-                serializer.validated_data["code"],
-            )
-        except ValueError as exc:
-            return Response(
-                {"error": {"code": "otp_invalid", "message": str(exc)}},
+                {"error": {"code": "invalid_token", "message": str(exc)}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        tokens = get_tokens_for_user(user)
-        return Response({**tokens, "user": UserSerializer(user).data})
+        return Response(UserSerializer(user).data)
+
+
+class ResendVerificationView(APIView):
+    """POST /v1/auth/resend-verification/ — send a fresh verification email."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        request=ResendVerificationSerializer,
+        responses={200: {"type": "object", "properties": {"detail": {"type": "string"}}}},
+        summary="Resend verification email",
+    )
+    def post(self, request):
+        ser = ResendVerificationSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            user = User.objects.get(email=ser.validated_data["email"])
+        except User.DoesNotExist:
+            # Don't reveal whether the email exists
+            return Response(
+                {"detail": "If that email is registered, a verification link has been sent."}
+            )
+
+        if user.email_verified:
+            return Response({"detail": "Email is already verified."})
+
+        try:
+            send_verification_email(user)
+        except Exception as exc:
+            logger.error("Failed to resend verification email to %s: %s", user.email, exc)
+
+        return Response(
+            {"detail": "If that email is registered, a verification link has been sent."}
+        )
 
 
 class _LogoutRequestSerializer(serializers.Serializer):
@@ -120,7 +137,7 @@ class LogoutView(APIView):
     @extend_schema(
         request=_LogoutRequestSerializer,
         responses={204: None},
-        summary="Logout and revoke refresh token",
+        summary="Logout",
     )
     def post(self, request):
         refresh_token = request.data.get("refresh")
@@ -133,12 +150,12 @@ class LogoutView(APIView):
             token = RefreshToken(refresh_token)
             token.blacklist()
         except TokenError:
-            pass  # already invalid — still return 204
+            pass
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class MeView(APIView):
-    """Current user's profile."""
+    """Current user's details."""
 
     permission_classes = [IsAuthenticated]
 
@@ -166,21 +183,17 @@ class DeviceView(APIView):
         request=_DeviceSerializer,
         responses={201: _DeviceResponseSerializer},
         summary="Register a device",
-        description="Register a device to receive push notifications and track sync state.",
     )
     def post(self, request):
         from apps.accounts.models import Device
 
         ser = self._DeviceSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-
-        # One device record per user+platform — update push token if it exists
         device, created = Device.objects.update_or_create(
             user=request.user,
             platform=ser.validated_data["platform"],
             defaults={"push_token": ser.validated_data.get("push_token") or None},
         )
-
         return Response(
             {
                 "id": str(device.id),
@@ -231,7 +244,7 @@ class DeviceDetailView(APIView):
 
 
 class MeExportView(APIView):
-    """GET /me/export — export the user's own data as JSON (GDPR-style)."""
+    """GET /v1/me/export/ — export the user's own data as JSON."""
 
     permission_classes = [IsAuthenticated]
 
@@ -239,36 +252,26 @@ class MeExportView(APIView):
         responses={200: {"type": "object"}},
         summary="Export user data",
         description=(
-            "Returns a JSON dump of all data the consumer backend holds for the "
-            "current user: profile, diet tags, pantry, saved recipes, cook log, "
-            "meal plans, community submissions, and consent records. "
-            "Does NOT include engine-side food data."
+            "Returns a JSON dump of all data the backend holds for the current user: "
+            "profile, diet tags, pantry, saved recipes, cook log, meal plans, "
+            "submissions, and consent records."
         ),
     )
     def get(self, request):
-        user = request.user
-        data = _build_user_export(user)
-        return Response(data)
+        return Response(_build_user_export(request.user))
 
 
 class MeDeleteView(APIView):
-    """DELETE /me — soft-delete the account.
-
-    The account is immediately deactivated. A Celery task purges all personal
-    data after the configured grace period (default: 35 days).
-    An audit event is logged.
-    """
+    """DELETE /v1/me/delete/ — soft-delete the account."""
 
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        request=None,
         responses={204: None},
         summary="Delete account",
         description=(
-            "Soft-deletes the user's account. The account is deactivated immediately "
-            "and all personal data is purged after a 35-day grace period. "
-            "This action cannot be undone after the grace period."
+            "Soft-deletes the account immediately. All personal data is purged "
+            "after a 35-day grace period."
         ),
     )
     def delete(self, request):
@@ -276,7 +279,6 @@ class MeDeleteView(APIView):
         from apps.core.models import AuditEvent, log_audit_event
 
         user = request.user
-
         log_audit_event(
             action="account_deletion_requested",
             actor_id=str(user.id),
@@ -285,11 +287,8 @@ class MeDeleteView(APIView):
             object_id=str(user.id),
             ip_address=request.META.get("REMOTE_ADDR", ""),
         )
-
         user.soft_delete()
 
-        # Schedule data purge after grace period (35 days)
-        # In test environments (CELERY_TASK_ALWAYS_EAGER), this runs immediately but is harmless.
         from django.conf import settings as django_settings
 
         if getattr(django_settings, "CELERY_TASK_ALWAYS_EAGER", False):
@@ -297,9 +296,8 @@ class MeDeleteView(APIView):
         else:
             purge_user_data_after_grace_period.apply_async(
                 args=[str(user.id)],
-                countdown=35 * 24 * 60 * 60,  # 35 days in seconds
+                countdown=35 * 24 * 60 * 60,
             )
-
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -309,10 +307,8 @@ class MeDeleteView(APIView):
 
 
 def _build_user_export(user) -> dict:
-    """Assemble all user data into a single exportable dict."""
     from apps.accounts.models import Consent, Device
 
-    # Pantry
     try:
         from apps.pantry.models import PantryItem
 
@@ -324,7 +320,6 @@ def _build_user_export(user) -> dict:
     except Exception:
         pantry = []
 
-    # Saved recipes
     try:
         from apps.library.models import SavedRecipe
 
@@ -336,7 +331,6 @@ def _build_user_export(user) -> dict:
     except Exception:
         saved = []
 
-    # Cook log
     try:
         from apps.library.models import CookLog
 
@@ -344,7 +338,6 @@ def _build_user_export(user) -> dict:
     except Exception:
         cook_log = []
 
-    # Meal plans
     try:
         from apps.planner.models import MealPlan, MealPlanEntry
 
@@ -355,11 +348,10 @@ def _build_user_export(user) -> dict:
                     "day", "meal_type", "dish_id", "dish_slug", "servings", "note"
                 )
             )
-            plans.append({"week_start": plan.week_start.isoformat(), "entries": entries})
+            plans.append({"week_start": str(plan.week_start), "entries": entries})
     except Exception:
         plans = []
 
-    # Submissions
     try:
         from apps.community.models import Submission
 
@@ -369,20 +361,18 @@ def _build_user_export(user) -> dict:
     except Exception:
         submissions = []
 
-    # Consents
     consents = list(
         Consent.objects.filter(user=user).values("type", "version", "granted_at", "revoked_at")
     )
-
-    # Devices (no push tokens — those are operational, not personal data)
     devices = list(Device.objects.filter(user=user).values("platform", "last_seen", "created_at"))
 
     return {
         "user": {
             "id": str(user.id),
             "email": user.email,
-            "phone": user.phone,
+            "username": user.username,
             "language": user.language,
+            "email_verified": user.email_verified,
             "created_at": user.created_at.isoformat() if user.created_at else None,
         },
         "pantry": pantry,

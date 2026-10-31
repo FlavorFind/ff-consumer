@@ -1,6 +1,5 @@
 """Serializers for the accounts app."""
 
-import phonenumbers
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import serializers
@@ -10,7 +9,7 @@ User = get_user_model()
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """Add user language and plan to the JWT payload."""
+    """Add user language to the JWT payload."""
 
     @classmethod
     def get_token(cls, user):
@@ -20,9 +19,10 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 
 class RegisterSerializer(serializers.Serializer):
-    """Registration with email+password."""
+    """Registration: email + username + password."""
 
     email = serializers.EmailField()
+    username = serializers.CharField(min_length=3, max_length=50)
     password = serializers.CharField(write_only=True, min_length=8)
     language = serializers.ChoiceField(choices=["en", "sw"], default="en")
     terms_version = serializers.CharField(default="2026-10")
@@ -31,6 +31,18 @@ class RegisterSerializer(serializers.Serializer):
         if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("An account with this email already exists.")
         return value.lower()
+
+    def validate_username(self, value):
+        if User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError("This username is already taken.")
+        # Only letters, numbers, underscores, hyphens
+        import re
+
+        if not re.match(r"^[\w-]+$", value):
+            raise serializers.ValidationError(
+                "Username may only contain letters, numbers, underscores, and hyphens."
+            )
+        return value
 
     def validate_password(self, value):
         from django.contrib.auth.password_validation import validate_password
@@ -46,9 +58,11 @@ class RegisterSerializer(serializers.Serializer):
 
         user = User.objects.create_user(
             email=validated_data["email"],
+            username=validated_data["username"],
             language=validated_data.get("language", "en"),
             password=password,
             status=User.Status.ACTIVE,
+            email_verified=False,
         )
 
         AuthIdentity.objects.create(
@@ -63,35 +77,16 @@ class RegisterSerializer(serializers.Serializer):
         return user
 
 
-class OTPRequestSerializer(serializers.Serializer):
-    """Request a phone OTP."""
+class EmailVerifySerializer(serializers.Serializer):
+    """Verify an email address using the token from the verification email."""
 
-    phone = serializers.CharField(max_length=20)
-
-    def validate_phone(self, value):
-        try:
-            parsed = phonenumbers.parse(value, "KE")
-            if not phonenumbers.is_valid_number(parsed):
-                raise serializers.ValidationError("Invalid phone number.")
-            return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
-        except phonenumbers.NumberParseException as exc:
-            raise serializers.ValidationError("Invalid phone number format.") from exc
+    token = serializers.CharField()
 
 
-class OTPVerifySerializer(serializers.Serializer):
-    """Verify a phone OTP and return JWT tokens."""
+class ResendVerificationSerializer(serializers.Serializer):
+    """Request a new verification email."""
 
-    phone = serializers.CharField(max_length=20)
-    code = serializers.CharField(min_length=6, max_length=6)
-
-    def validate_phone(self, value):
-        try:
-            parsed = phonenumbers.parse(value, "KE")
-            if not phonenumbers.is_valid_number(parsed):
-                raise serializers.ValidationError("Invalid phone number.")
-            return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
-        except phonenumbers.NumberParseException as exc:
-            raise serializers.ValidationError("Invalid phone number format.") from exc
+    email = serializers.EmailField()
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -99,7 +94,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "email", "phone", "language", "status", "created_at"]
+        fields = ["id", "email", "username", "language", "status", "email_verified", "created_at"]
         read_only_fields = fields
 
 

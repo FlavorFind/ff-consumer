@@ -125,6 +125,7 @@ def user_with_nut_allergy(db):
 
     user = User.objects.create_user(
         email="nut-allergy@example.com",
+        username="nutallergyuser",
         password="pass1234",
         status=User.Status.ACTIVE,
     )
@@ -138,6 +139,7 @@ def vegetarian_user(db):
 
     user = User.objects.create_user(
         email="veg@example.com",
+        username="veguser",
         password="pass1234",
         status=User.Status.ACTIVE,
     )
@@ -151,6 +153,7 @@ def halal_user(db):
 
     user = User.objects.create_user(
         email="halal@example.com",
+        username="halaluser",
         password="pass1234",
         status=User.Status.ACTIVE,
     )
@@ -164,6 +167,7 @@ def gluten_free_user(db):
 
     user = User.objects.create_user(
         email="gf@example.com",
+        username="gfuser",
         password="pass1234",
         status=User.Status.ACTIVE,
     )
@@ -175,6 +179,7 @@ def gluten_free_user(db):
 def no_diet_user(db):
     return User.objects.create_user(
         email="nodiet@example.com",
+        username="nodietuser",
         password="pass1234",
         status=User.Status.ACTIVE,
     )
@@ -265,6 +270,7 @@ class TestAllergenExclusion:
 
         user = User.objects.create_user(
             email="multi-allergy@example.com",
+            username="multiallergyuser",
             password="pass1234",
             status=User.Status.ACTIVE,
         )
@@ -504,6 +510,7 @@ class TestDietTags:
 
         user = User.objects.create_user(
             email="halal-nut@example.com",
+            username="halalnutuser",
             password="pass1234",
             status=User.Status.ACTIVE,
         )

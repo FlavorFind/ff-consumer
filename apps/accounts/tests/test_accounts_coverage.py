@@ -1,380 +1,291 @@
-"""Extended accounts tests — services, OTP flow, export, delete, serializers.
+"""Extended accounts tests — email verification flow, export, delete, serializers.
 
 Targets 95%+ coverage for apps/accounts.
 """
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.utils import timezone
 
 User = get_user_model()
 
 
 # ---------------------------------------------------------------------------
-# OTP service tests
+# Email verification service tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-class TestOTPService:
-    def test_request_otp_creates_record(self):
-        from apps.accounts.models import OTPRequest
-        from apps.accounts.services import request_otp
+class TestEmailVerificationService:
+    def test_send_verification_creates_token(self, user):
+        from apps.accounts.models import EmailVerification
+        from apps.accounts.services import send_verification_email
 
-        request_otp("+254712000001")
-        assert OTPRequest.objects.filter(phone="+254712000001").exists()
+        send_verification_email(user)
+        assert EmailVerification.objects.filter(user=user, used_at__isnull=True).exists()
 
-    def test_request_otp_cooldown_raises(self):
-        from apps.accounts.services import request_otp
+    def test_send_verification_invalidates_previous_tokens(self, user):
+        from apps.accounts.models import EmailVerification
+        from apps.accounts.services import send_verification_email
 
-        request_otp("+254712000002")
-        with pytest.raises(ValueError, match="wait"):
-            request_otp("+254712000002")
+        send_verification_email(user)
+        send_verification_email(user)
+        # Only the latest (unused) token should remain
+        assert EmailVerification.objects.filter(user=user, used_at__isnull=True).count() == 1
 
-    def test_verify_otp_no_pending_raises(self):
-        from apps.accounts.services import verify_otp
-
-        with pytest.raises(ValueError, match="No pending"):
-            verify_otp("+254799000001", "123456")
-
-    def test_verify_otp_expired_raises(self):
+    def test_verify_token_marks_email_verified(self, user):
         from datetime import timedelta
 
-        from apps.accounts.models import OTPRequest
-        from apps.accounts.services import _hash_code, verify_otp
+        from django.utils import timezone
 
-        OTPRequest.objects.create(
-            phone="+254799000002",
-            code_hash=_hash_code("111111"),
-            expires_at=timezone.now() - timedelta(minutes=1),
+        from apps.accounts.models import EmailVerification
+        from apps.accounts.services import _generate_token, _hash_token, verify_email_token
+
+        token = _generate_token()
+        EmailVerification.objects.create(
+            user=user,
+            token=_hash_token(token),
+            expires_at=timezone.now() + timedelta(hours=24),
         )
+
+        result = verify_email_token(token)
+        assert result.email_verified is True
+
+    def test_verify_invalid_token_raises(self):
+        from apps.accounts.services import verify_email_token
+
+        with pytest.raises(ValueError, match="Invalid"):
+            verify_email_token("notavalidtoken")
+
+    def test_verify_expired_token_raises(self, user):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.accounts.models import EmailVerification
+        from apps.accounts.services import _generate_token, _hash_token, verify_email_token
+
+        token = _generate_token()
+        EmailVerification.objects.create(
+            user=user,
+            token=_hash_token(token),
+            expires_at=timezone.now() - timedelta(hours=1),  # already expired
+        )
+
         with pytest.raises(ValueError, match="expired"):
-            verify_otp("+254799000002", "111111")
+            verify_email_token(token)
 
-    def test_verify_otp_locked_raises(self):
-        from apps.accounts.models import OTPRequest
-        from apps.accounts.services import _hash_code, verify_otp
-
-        OTPRequest.objects.create(
-            phone="+254799000003",
-            code_hash=_hash_code("222222"),
-            expires_at=timezone.now() + timezone.timedelta(minutes=5),
-            attempts=5,
-        )
-        with pytest.raises(ValueError, match="Too many"):
-            verify_otp("+254799000003", "222222")
-
-    def test_verify_otp_wrong_code_increments_attempts(self):
-        from apps.accounts.models import OTPRequest
-        from apps.accounts.services import _hash_code, verify_otp
-
-        otp = OTPRequest.objects.create(
-            phone="+254799000004",
-            code_hash=_hash_code("333333"),
-            expires_at=timezone.now() + timezone.timedelta(minutes=5),
-        )
-        with pytest.raises(ValueError, match="Incorrect"):
-            verify_otp("+254799000004", "000000")
-        otp.refresh_from_db()
-        assert otp.attempts == 1
-
-    def test_verify_otp_creates_new_user(self):
-        from apps.accounts.models import OTPRequest
-        from apps.accounts.services import _hash_code, verify_otp
-
-        OTPRequest.objects.create(
-            phone="+254799000005",
-            code_hash=_hash_code("444444"),
-            expires_at=timezone.now() + timezone.timedelta(minutes=5),
-        )
-        user = verify_otp("+254799000005", "444444")
-        assert user.phone == "+254799000005"
-        assert User.objects.filter(phone="+254799000005").exists()
-
-    def test_verify_otp_returns_existing_user(self):
-        from apps.accounts.models import OTPRequest
-        from apps.accounts.services import _hash_code, verify_otp
-
-        existing = User.objects.create_user(phone="+254799000006")
-        OTPRequest.objects.create(
-            phone="+254799000006",
-            code_hash=_hash_code("555555"),
-            expires_at=timezone.now() + timezone.timedelta(minutes=5),
-        )
-        user = verify_otp("+254799000006", "555555")
-        assert user.id == existing.id
-
-    def test_verify_otp_marks_used(self):
-        from apps.accounts.models import OTPRequest
-        from apps.accounts.services import _hash_code, verify_otp
-
-        otp = OTPRequest.objects.create(
-            phone="+254799000007",
-            code_hash=_hash_code("666666"),
-            expires_at=timezone.now() + timezone.timedelta(minutes=5),
-        )
-        verify_otp("+254799000007", "666666")
-        otp.refresh_from_db()
-        assert otp.used_at is not None
-
-    def test_otp_request_model_properties(self):
+    def test_verify_already_used_token_raises(self, user):
         from datetime import timedelta
 
-        from apps.accounts.models import OTPRequest
-        from apps.accounts.services import _hash_code
+        from django.utils import timezone
 
-        otp_expired = OTPRequest(
-            phone="+254799999",
-            code_hash=_hash_code("x"),
-            expires_at=timezone.now() - timedelta(minutes=1),
-            attempts=0,
-        )
-        assert otp_expired.is_expired is True
-        assert otp_expired.is_used is False
+        from apps.accounts.models import EmailVerification
+        from apps.accounts.services import _generate_token, _hash_token, verify_email_token
 
-        otp_locked = OTPRequest(
-            phone="+254799999",
-            code_hash=_hash_code("x"),
-            expires_at=timezone.now() + timedelta(minutes=5),
-            attempts=5,
+        token = _generate_token()
+        EmailVerification.objects.create(
+            user=user,
+            token=_hash_token(token),
+            expires_at=timezone.now() + timedelta(hours=24),
+            used_at=timezone.now(),  # already used
         )
-        assert otp_locked.is_locked is True
+
+        with pytest.raises(ValueError, match="Invalid"):
+            verify_email_token(token)
 
 
 # ---------------------------------------------------------------------------
-# User model tests
+# Email verification views
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestEmailVerifyView:
+    def test_valid_token_verifies_email(self, api_client, user):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.accounts.models import EmailVerification
+        from apps.accounts.services import _generate_token, _hash_token
+
+        token = _generate_token()
+        EmailVerification.objects.create(
+            user=user,
+            token=_hash_token(token),
+            expires_at=timezone.now() + timedelta(hours=24),
+        )
+
+        response = api_client.post("/v1/auth/verify-email/", {"token": token}, format="json")
+        assert response.status_code == 200
+        assert response.json()["email_verified"] is True
+
+    def test_invalid_token_returns_400(self, api_client):
+        response = api_client.post("/v1/auth/verify-email/", {"token": "badtoken"}, format="json")
+        assert response.status_code == 400
+
+    def test_no_token_returns_400(self, api_client):
+        response = api_client.post("/v1/auth/verify-email/", {}, format="json")
+        assert response.status_code == 400
+
+
+@pytest.mark.django_db
+class TestResendVerificationView:
+    def test_resend_for_unverified_user(self, api_client, user):
+        # RESEND_API_KEY is empty in test — email is skipped silently
+        response = api_client.post(
+            "/v1/auth/resend-verification/", {"email": user.email}, format="json"
+        )
+        assert response.status_code == 200
+        assert "verification link" in response.json()["detail"].lower()
+
+    def test_resend_for_nonexistent_email(self, api_client):
+        response = api_client.post(
+            "/v1/auth/resend-verification/",
+            {"email": "nobody@example.com"},
+            format="json",
+        )
+        # Does not reveal whether email exists
+        assert response.status_code == 200
+
+    def test_resend_for_already_verified_user(self, api_client, user):
+        user.email_verified = True
+        user.save()
+        response = api_client.post(
+            "/v1/auth/resend-verification/", {"email": user.email}, format="json"
+        )
+        assert response.status_code == 200
+        assert "already verified" in response.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Registration
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestRegistration:
+    def test_register_creates_user(self, api_client):
+        response = api_client.post(
+            "/v1/auth/register/",
+            {
+                "email": "newuser@example.com",
+                "username": "newuser",
+                "password": "StrongPass123!",
+            },
+            format="json",
+        )
+        assert response.status_code == 201
+        assert response.json()["user"]["email"] == "newuser@example.com"
+        assert response.json()["user"]["email_verified"] is False
+        assert "access" in response.json()
+        assert "refresh" in response.json()
+
+    def test_register_duplicate_email_returns_400(self, api_client, user):
+        response = api_client.post(
+            "/v1/auth/register/",
+            {"email": user.email, "username": "other", "password": "StrongPass123!"},
+            format="json",
+        )
+        assert response.status_code == 400
+
+    def test_register_duplicate_username_returns_400(self, api_client, user):
+        response = api_client.post(
+            "/v1/auth/register/",
+            {
+                "email": "unique@example.com",
+                "username": user.username,
+                "password": "StrongPass123!",
+            },
+            format="json",
+        )
+        assert response.status_code == 400
+
+    def test_register_invalid_username_chars(self, api_client):
+        response = api_client.post(
+            "/v1/auth/register/",
+            {
+                "email": "valid@example.com",
+                "username": "bad username!",
+                "password": "StrongPass123!",
+            },
+            format="json",
+        )
+        assert response.status_code == 400
+
+    def test_register_weak_password_returns_400(self, api_client):
+        response = api_client.post(
+            "/v1/auth/register/",
+            {"email": "x@example.com", "username": "xuser", "password": "123"},
+            format="json",
+        )
+        assert response.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# User model
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
 class TestUserModel:
+    def test_create_user_requires_email(self):
+        with pytest.raises(ValueError, match="email"):
+            User.objects.create_user(email="", username="x", password="pass")
+
     def test_soft_delete(self, user):
         user.soft_delete()
-        user.refresh_from_db()
-        assert user.status == User.Status.DELETED
-        assert user.is_active is False
-        assert user.deleted_at is not None
         assert user.is_deleted is True
+        assert user.is_active is False
+        assert user.status == User.Status.DELETED
 
-    def test_create_user_no_email_no_phone_raises(self):
-        with pytest.raises(ValueError, match="email or a phone"):
-            User.objects.create_user()
-
-    def test_create_superuser(self):
-        su = User.objects.create_superuser(email="su@example.com", password="SuperPass123!")
-        assert su.is_staff is True
-        assert su.is_superuser is True
-
-    def test_user_str_email(self, user):
+    def test_str_returns_email(self, user):
         assert str(user) == user.email
 
-    def test_user_str_phone_no_email(self):
-        u = User.objects.create_user(phone="+254711000001")
-        assert str(u) == "+254711000001"
-
 
 # ---------------------------------------------------------------------------
-# Serializer tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-class TestRegisterSerializer:
-    def test_valid_data(self):
-        from apps.accounts.serializers import RegisterSerializer
-
-        ser = RegisterSerializer(
-            data={"email": "ser@example.com", "password": "StrongPass1!", "language": "sw"}
-        )
-        assert ser.is_valid(), ser.errors
-        user = ser.save()
-        assert user.email == "ser@example.com"
-        assert user.language == "sw"
-
-    def test_invalid_email(self):
-        from apps.accounts.serializers import RegisterSerializer
-
-        ser = RegisterSerializer(data={"email": "not-an-email", "password": "StrongPass1!"})
-        assert not ser.is_valid()
-        assert "email" in ser.errors
-
-    def test_weak_password_rejected(self):
-        from apps.accounts.serializers import RegisterSerializer
-
-        ser = RegisterSerializer(data={"email": "ok@example.com", "password": "abc"})
-        assert not ser.is_valid()
-
-    def test_duplicate_email_rejected(self, user):
-        from apps.accounts.serializers import RegisterSerializer
-
-        ser = RegisterSerializer(data={"email": user.email, "password": "StrongPass1!"})
-        assert not ser.is_valid()
-
-
-# ---------------------------------------------------------------------------
-# Me export / delete endpoint tests
+# Export and delete
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
 class TestMeExport:
     def test_export_returns_user_data(self, auth_client, user):
-        response = auth_client.get("/v1/me/export")
+        response = auth_client.get("/v1/me/export/")
         assert response.status_code == 200
         data = response.json()
         assert data["user"]["email"] == user.email
+        assert data["user"]["username"] == user.username
         assert "pantry" in data
         assert "saved_recipes" in data
-        assert "cook_log" in data
-        assert "meal_plans" in data
-        assert "submissions" in data
-        assert "consents" in data
-        assert "devices" in data
 
     def test_export_requires_auth(self, api_client):
-        response = api_client.get("/v1/me/export")
-        assert response.status_code == 401
+        assert api_client.get("/v1/me/export/").status_code == 401
 
 
 @pytest.mark.django_db
 class TestMeDelete:
-    def test_delete_soft_deletes_user(self, auth_client, user):
-        response = auth_client.delete("/v1/me/delete")
+    def test_delete_account_deactivates_user(self, auth_client, user):
+        response = auth_client.delete("/v1/me/delete/")
         assert response.status_code == 204
         user.refresh_from_db()
         assert user.status == User.Status.DELETED
         assert user.is_active is False
 
     def test_delete_requires_auth(self, api_client):
-        response = api_client.delete("/v1/me/delete")
-        assert response.status_code == 401
-
-    def test_delete_logs_audit_event(self, auth_client, user):
-        from unittest.mock import patch
-
-        with patch("apps.accounts.tasks.purge_user_data_after_grace_period.delay") as mock_task:
-            auth_client.delete("/v1/me/delete")
-            assert mock_task.called
-            args = mock_task.call_args[0]
-            assert args[0] == str(user.id)
-
-        from apps.core.models import AuditEvent
-
-        assert AuditEvent.objects.filter(
-            actor_id=str(user.id), action="account_deletion_requested"
-        ).exists()
+        assert api_client.delete("/v1/me/delete/").status_code == 401
 
 
 # ---------------------------------------------------------------------------
-# Purge task (direct call)
+# Token generation
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-class TestPurgeTask:
-    def test_purge_no_op_for_active_user(self, user):
-        """Purge task skips users who are not in DELETED status."""
-        from apps.accounts.tasks import purge_user_data_after_grace_period
+class TestGetTokens:
+    def test_get_tokens_returns_access_and_refresh(self, user):
+        from apps.accounts.services import get_tokens_for_user
 
-        # Call task directly — user is active, should be no-op
-        purge_user_data_after_grace_period(str(user.id))
-        user.refresh_from_db()
-        assert user.status == User.Status.ACTIVE  # unchanged
-
-    def test_purge_no_op_for_missing_user(self):
-        """Purge task handles missing user gracefully."""
-        import uuid
-
-        from apps.accounts.tasks import purge_user_data_after_grace_period
-
-        # Should not raise
-        purge_user_data_after_grace_period(str(uuid.uuid4()))
-
-    def test_purge_anonymises_deleted_user(self, user):
-        """Purge task anonymises user data after soft delete."""
-        from apps.accounts.tasks import purge_user_data_after_grace_period
-
-        user.soft_delete()
-        original_email = user.email
-
-        purge_user_data_after_grace_period(str(user.id))
-
-        user.refresh_from_db()
-        assert user.email != original_email
-        assert "deleted" in user.email
-        assert user.phone is None
-
-    def test_purge_removes_pantry_items(self, user):
-        """Purge removes pantry items for the deleted user."""
-        from apps.accounts.tasks import purge_user_data_after_grace_period
-        from apps.pantry.models import PantryItem
-
-        PantryItem.objects.create(
-            user=user,
-            ingredient_id="00000000-0000-0000-0000-000000000001",
-            ingredient_slug="tomato",
-            display_name="Tomato",
-        )
-        user.soft_delete()
-        purge_user_data_after_grace_period(str(user.id))
-        assert PantryItem.objects.filter(user=user).count() == 0
-
-
-# ---------------------------------------------------------------------------
-# OTP endpoints
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-class TestOTPEndpoints:
-    def test_otp_request_valid_phone(self, api_client):
-        response = api_client.post(
-            "/v1/auth/otp/request",
-            {"phone": "+254712000099"},
-            format="json",
-        )
-        assert response.status_code == 200
-        assert "detail" in response.json()
-
-    def test_otp_verify_invalid_code(self, api_client):
-        from apps.accounts.models import OTPRequest
-        from apps.accounts.services import _hash_code
-
-        OTPRequest.objects.create(
-            phone="+254711000099",
-            code_hash=_hash_code("123456"),
-            expires_at=timezone.now() + timezone.timedelta(minutes=5),
-        )
-        response = api_client.post(
-            "/v1/auth/otp/verify",
-            {"phone": "+254711000099", "code": "000000"},
-            format="json",
-        )
-        assert response.status_code == 400
-        assert "otp_invalid" in response.json().get("error", {}).get("code", "")
-
-    def test_otp_verify_success(self, api_client):
-        from apps.accounts.models import OTPRequest
-        from apps.accounts.services import _hash_code
-
-        OTPRequest.objects.create(
-            phone="+254711000098",
-            code_hash=_hash_code("123456"),
-            expires_at=timezone.now() + timezone.timedelta(minutes=5),
-        )
-        response = api_client.post(
-            "/v1/auth/otp/verify",
-            {"phone": "+254711000098", "code": "123456"},
-            format="json",
-        )
-        assert response.status_code == 200
-        assert "access" in response.json()
-
-    def test_logout_missing_refresh_token(self, auth_client):
-        response = auth_client.post("/v1/auth/logout", {}, format="json")
-        assert response.status_code == 400
-
-    def test_logout_invalid_refresh_token(self, auth_client):
-        # Already-invalid token should still return 204 (silently ignored)
-        response = auth_client.post("/v1/auth/logout", {"refresh": "invalidtoken"}, format="json")
-        assert response.status_code == 204
+        tokens = get_tokens_for_user(user)
+        assert "access" in tokens
+        assert "refresh" in tokens

@@ -15,6 +15,7 @@ def plus_user(db):
     User = get_user_model()
     user = User.objects.create_user(
         email="sync_plus@example.com",
+        username="syncplus",
         password="testpass",
         status=User.Status.ACTIVE,
     )

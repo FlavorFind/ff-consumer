@@ -35,6 +35,7 @@ def user(db):
     User = get_user_model()
     return User.objects.create_user(
         email="test@example.com",
+        username="testuser",
         password="testpass123",
         status=User.Status.ACTIVE,
     )
@@ -58,6 +59,7 @@ def other_user(db):
     User = get_user_model()
     return User.objects.create_user(
         email="other@example.com",
+        username="otheruser",
         password="otherpass123",
         status=User.Status.ACTIVE,
     )
