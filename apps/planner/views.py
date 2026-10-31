@@ -41,6 +41,8 @@ class MealPlanView(APIView):
             )
 
         plan, _ = MealPlan.objects.get_or_create(user=request.user, week_start=monday)
+        # Re-fetch with prefetch to avoid N+1 when serializing entries
+        plan = MealPlan.objects.prefetch_related("entries").get(id=plan.id)
         return Response(MealPlanSerializer(plan).data)
 
     @extend_schema(
@@ -80,7 +82,8 @@ class MealPlanView(APIView):
                 position=entry_data.get("position", i),
             )
 
-        plan.refresh_from_db()
+        # Re-fetch with prefetch to avoid N+1 when serializing entries
+        plan = MealPlan.objects.prefetch_related("entries").get(id=plan.id)
         return Response(MealPlanSerializer(plan).data)
 
 
@@ -100,7 +103,7 @@ class ShoppingListGenerateView(APIView):
     )
     def post(self, request, plan_id):
         try:
-            plan = MealPlan.objects.get(id=plan_id, user=request.user)
+            plan = MealPlan.objects.prefetch_related("entries").get(id=plan_id, user=request.user)
         except MealPlan.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
@@ -114,7 +117,7 @@ class ShoppingListGenerateView(APIView):
         for item_data in items:
             ShoppingItem.objects.create(shopping_list=shopping_list, **item_data)
 
-        shopping_list.refresh_from_db()
+        shopping_list = ShoppingList.objects.prefetch_related("items").get(id=shopping_list.id)
         return Response(ShoppingListSerializer(shopping_list).data, status=status.HTTP_201_CREATED)
 
 
@@ -126,7 +129,7 @@ class ShoppingListDetailView(APIView):
     @extend_schema(responses={200: ShoppingListSerializer}, summary="Get a shopping list")
     def get(self, request, list_id):
         try:
-            sl = ShoppingList.objects.get(id=list_id, user=request.user)
+            sl = ShoppingList.objects.prefetch_related("items").get(id=list_id, user=request.user)
         except ShoppingList.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
         return Response(ShoppingListSerializer(sl).data)
@@ -168,7 +171,11 @@ class ShoppingListShareView(APIView):
     )
     def get(self, request, list_id):
         try:
-            sl = ShoppingList.objects.get(id=list_id, user=request.user)
+            sl = (
+                ShoppingList.objects.select_related("plan")
+                .prefetch_related("items")
+                .get(id=list_id, user=request.user)
+            )
         except ShoppingList.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
         text = shopping_list_to_whatsapp(sl)

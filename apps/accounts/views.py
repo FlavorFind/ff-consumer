@@ -339,12 +339,12 @@ def _build_user_export(user) -> dict:
         cook_log = []
 
     try:
-        from apps.planner.models import MealPlan, MealPlanEntry
+        from apps.planner.models import MealPlan
 
         plans = []
-        for plan in MealPlan.objects.filter(user=user):
+        for plan in MealPlan.objects.filter(user=user).prefetch_related("entries"):
             entries = list(
-                MealPlanEntry.objects.filter(plan=plan).values(
+                plan.entries.all().values(
                     "day", "meal_type", "dish_id", "dish_slug", "servings", "note"
                 )
             )
