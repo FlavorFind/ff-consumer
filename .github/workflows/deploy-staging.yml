@@ -49,6 +49,7 @@ jobs:
           timeout: 300s
           script: |
             set -euo pipefail
+            export DJANGO_SETTINGS_MODULE=config.settings.prod
             cd /home/mayday/ff-consumer
 
             echo "=== [1/6] Pull latest code ==="
