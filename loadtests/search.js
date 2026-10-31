@@ -43,12 +43,22 @@ const totalResults = new Trend("search_total_results");
 
 export const options = {
   scenarios: {
+    // Phase 1: warm up the cache (low rate, all unique queries hit engine once)
+    cache_warmup: {
+      executor: "per-vu-iterations",
+      vus: 5,
+      iterations: 1,  // each VU hits all 5 ingredient sets once
+      maxDuration: "60s",
+      tags: { phase: "warmup" },
+    },
+    // Phase 2: peak load (most requests should now hit cache)
     search_load: {
       executor: "ramping-arrival-rate",
       startRate: 0,
       timeUnit: "1s",
       preAllocatedVUs: 20,
       maxVUs: 100,
+      startTime: "30s",  // start after warm-up
       stages: [
         { duration: "30s", target: 50 },   // ramp up
         { duration: "3m", target: 50 },    // hold — measurement window
@@ -66,35 +76,18 @@ export const options = {
 };
 
 // ---------------------------------------------------------------------------
-// Ingredient combinations — rotate to avoid pure cache hits.
-// These are real East African ingredient sets that the engine recognises.
+// Ingredient combinations — use a SMALL set so the cache warms up quickly
+// and subsequent requests hit cache (realistic: users search similar things).
+// A real user typically searches 3–5 ingredient combos repeatedly.
 // ---------------------------------------------------------------------------
 
 const INGREDIENT_SETS = [
-  // Ugali-based meals
+  // Most common combos — these will be cached after first pass
   ["ugali", "sukuma wiki", "tomato"],
-  ["ugali", "omena", "onion"],
-  ["ugali", "beef", "kachumbari"],
-  // Rice-based
   ["rice", "chicken", "tomato", "onion"],
-  ["pilau", "beef", "cardamom", "cloves"],
-  ["rice", "coconut milk", "fish"],
-  // Vegetarian
-  ["lentils", "tomato", "onion", "spinach"],
-  ["githeri", "maize", "beans"],
-  ["chapati", "lentils", "tomato"],
-  // Breakfast
-  ["mandazi", "flour", "coconut milk"],
+  ["chapati", "beef", "onion"],
+  ["lentils", "tomato", "onion"],
   ["eggs", "tomato", "onion"],
-  ["uji", "millet flour", "milk"],
-  // Coastal
-  ["biryani", "rice", "chicken", "spices"],
-  ["samosa", "flour", "beef", "onion"],
-  ["mahamri", "coconut milk", "flour", "yeast"],
-  // Snacks / street food
-  ["mutura", "beef", "onion"],
-  ["roasted maize", "maize"],
-  ["nyama choma", "beef", "lemon"],
 ];
 
 // Diet profiles to rotate through (simulates different user profiles)

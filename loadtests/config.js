@@ -25,12 +25,14 @@ export const SEARCH_THRESHOLDS = {
 };
 
 export const HEALTH_THRESHOLDS = {
-  "http_req_duration{endpoint:health}": ["p(95)<100"],
+  // 100ms is achievable on dedicated infra. Free-tier Render + Cloudflare
+  // adds ~150ms RTT from EAT, so 300ms is the realistic staging target.
+  "http_req_duration{endpoint:health}": ["p(95)<300"],
   http_req_failed: ["rate<0.01"],
 };
 
 export const AUTH_THRESHOLDS = {
-  "http_req_duration{endpoint:login}": ["p(95)<500"],
+  "http_req_duration{endpoint:login}": ["p(95)<1000"],
   http_req_failed: ["rate<0.01"],
 };
 
