@@ -39,7 +39,7 @@ urlpatterns = [
     # Community — submissions, reviews
     path("", include("apps.community.urls")),
 
-    # Billing — plans, subscribe, M-Pesa callback, subscription status
+    # Billing — plans, subscribe, Paystack webhook, subscription status
     path("", include("apps.billing.urls")),
 
     # Notifications — in-app, preferences

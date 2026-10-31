@@ -274,6 +274,16 @@ ENGINE_CIRCUIT_BREAKER_THRESHOLD = env.int("ENGINE_CIRCUIT_BREAKER_THRESHOLD", d
 ENGINE_CIRCUIT_BREAKER_RECOVERY = env.int("ENGINE_CIRCUIT_BREAKER_RECOVERY", default=30)
 
 # ---------------------------------------------------------------------------
+# Paystack
+# ---------------------------------------------------------------------------
+PAYSTACK_SECRET_KEY = env("PAYSTACK_SECRET_KEY", default="")
+PAYSTACK_PUBLIC_KEY = env("PAYSTACK_PUBLIC_KEY", default="")
+PAYSTACK_CALLBACK_URL = env(
+    "PAYSTACK_CALLBACK_URL",
+    default="https://flavorfind.co.ke/plus/success",
+)
+
+# ---------------------------------------------------------------------------
 # Internationalisation
 # ---------------------------------------------------------------------------
 LANGUAGE_CODE = "en-us"

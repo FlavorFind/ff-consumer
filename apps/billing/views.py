@@ -1,7 +1,24 @@
-"""Billing views — plans, M-Pesa STK push, subscription status."""
+"""Billing views — plans, Paystack checkout, subscription status.
 
+Payment flow:
+  POST /v1/subscribe/
+    → backend calls Paystack Initialize Transaction API
+    → returns authorization_url to client
+    → user completes payment on Paystack hosted page
+    → Paystack POSTs to /v1/paystack/webhook/
+
+Webhook verification:
+  - Paystack signs the request body with HMAC-SHA512 using PAYSTACK_SECRET_KEY
+  - We verify the X-Paystack-Signature header before processing
+  - Amount is re-verified server-side against expected plan price
+  - Idempotency: reference is the payment.id UUID (set at initialize time)
+"""
+
+import hashlib
+import hmac
 import logging
 
+from django.conf import settings
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
@@ -14,12 +31,10 @@ from apps.core.models import log_audit_event
 
 logger = logging.getLogger(__name__)
 
-# Safaricom IP ranges for M-Pesa callback validation
-# Update this list from Safaricom's official documentation
-MPESA_IP_RANGES = [
-    "196.201.214.",
-    "196.201.213.",
-]
+
+# ---------------------------------------------------------------------------
+# Serializers
+# ---------------------------------------------------------------------------
 
 
 class PlanSerializer(serializers.ModelSerializer):
@@ -35,6 +50,17 @@ class SubscriptionSerializer(serializers.Serializer):
     trial_ends_at = serializers.DateTimeField(allow_null=True)
     renews_at = serializers.DateTimeField(allow_null=True)
     cancelled_at = serializers.DateTimeField(allow_null=True)
+
+
+class SubscribeSerializer(serializers.Serializer):
+    """Input for POST /v1/subscribe/."""
+
+    plan_code = serializers.ChoiceField(choices=["plus"], default="plus")
+
+
+# ---------------------------------------------------------------------------
+# Views
+# ---------------------------------------------------------------------------
 
 
 class PlanListView(APIView):
@@ -65,7 +91,6 @@ class SubscriptionView(APIView):
         try:
             sub = request.user.subscription
         except Subscription.DoesNotExist:
-            # Return free plan details for users with no subscription record
             return Response(
                 {
                     "plan_code": "free",
@@ -79,38 +104,24 @@ class SubscriptionView(APIView):
         return Response(SubscriptionSerializer(sub).data)
 
 
-class SubscribeSerializer(serializers.Serializer):
-    """Input for POST /v1/subscribe/."""
-
-    phone = serializers.CharField(
-        max_length=20,
-        help_text="M-Pesa phone number in format 254XXXXXXXXX",
-    )
-    plan_code = serializers.ChoiceField(choices=["plus"], default="plus")
-
-    def validate_phone(self, value):
-        # Must be 254XXXXXXXXX format
-        value = value.replace("+", "").replace(" ", "")
-        if not value.startswith("254") or len(value) != 12:
-            raise serializers.ValidationError(
-                "Phone must be in format 254XXXXXXXXX (e.g. 254712345678)"
-            )
-        return value
-
-
 class SubscribeView(APIView):
-    """POST /v1/subscribe/ — initiate M-Pesa STK push."""
+    """POST /v1/subscribe/ — initialise a Paystack transaction.
+
+    Returns an authorization_url the client redirects the user to.
+    Paystack calls /v1/paystack/webhook/ when payment completes.
+    """
 
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
         request=SubscribeSerializer,
         responses={200: {"type": "object"}},
-        summary="Subscribe to Plus via M-Pesa",
+        summary="Subscribe to Plus via Paystack",
         description=(
-            "Initiates an M-Pesa STK push to the user's phone. "
-            "The user confirms on their phone. "
-            "Daraja calls /v1/mpesa/callback/ when payment is confirmed."
+            "Initialises a Paystack transaction for the selected plan. "
+            "Returns {authorization_url, reference, payment_id}. "
+            "Redirect the user to authorization_url to complete payment. "
+            "Paystack will POST a charge.success event to /v1/paystack/webhook/ when done."
         ),
     )
     def post(self, request):
@@ -118,7 +129,6 @@ class SubscribeView(APIView):
         ser.is_valid(raise_exception=True)
 
         plan_code = ser.validated_data["plan_code"]
-        phone = ser.validated_data["phone"]
 
         try:
             plan = Plan.objects.get(code=plan_code)
@@ -128,12 +138,7 @@ class SubscribeView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Create a pending payment record as the idempotency anchor
-        # The provider_ref will be updated when Daraja confirms
-        import uuid as _uuid
-
-        pending_ref = f"PENDING-{_uuid.uuid4().hex[:8].upper()}"
-
+        # Ensure subscription record exists (or create it)
         subscription, _ = Subscription.objects.get_or_create(
             user=request.user,
             defaults={"plan": plan, "status": Subscription.Status.ACTIVE},
@@ -142,139 +147,148 @@ class SubscribeView(APIView):
             subscription.plan = plan
             subscription.save(update_fields=["plan", "updated_at"])
 
+        # Create payment record — its UUID becomes the Paystack reference
         payment = Payment.objects.create(
             user=request.user,
             subscription=subscription,
-            provider="mpesa",
-            provider_ref=pending_ref,
+            provider="paystack",
+            # reference is set to payment.id after creation (UUID is the idempotency key)
+            provider_ref="INIT",  # placeholder; updated below
             amount_kes=plan.price_kes,
             status=Payment.Status.PENDING,
         )
+        # Use the payment UUID as the Paystack reference (guarantees idempotency)
+        payment.provider_ref = str(payment.id)
+        payment.save(update_fields=["provider_ref"])
 
-        # Initiate STK push
-        stk_result = _initiate_stk_push(
-            phone=phone,
-            amount=int(plan.price_kes),
+        # Initialise Paystack transaction
+        paystack_result = _initialize_paystack_transaction(
+            email=request.user.email or f"user-{request.user.id}@flavorfind.internal",
+            amount_kes=plan.price_kes,
             reference=str(payment.id),
+            metadata={
+                "payment_id": str(payment.id),
+                "plan_code": plan_code,
+                "user_id": str(request.user.id),
+            },
         )
 
         return Response(
             {
                 "payment_id": str(payment.id),
+                "reference": str(payment.id),
+                "authorization_url": paystack_result.get("authorization_url"),
+                "access_code": paystack_result.get("access_code"),
                 "status": "pending",
-                "message": "STK push sent. Enter your M-Pesa PIN to complete.",
-                "checkout_request_id": stk_result.get("CheckoutRequestID"),
+                "message": "Redirect the user to authorization_url to complete payment.",
             }
         )
 
 
-class MpesaCallbackView(APIView):
-    """POST /v1/mpesa/callback/ — Daraja callback.
+class PaystackWebhookView(APIView):
+    """POST /v1/paystack/webhook/ — Paystack event webhook.
 
-    Unauthenticated but verified:
-    1. Source IP must be in Safaricom's published range
-    2. Amount must match the expected amount for the payment
-    3. provider_ref (M-Pesa transaction ID) must not already be processed
+    Paystack sends a POST with a JSON body signed with HMAC-SHA512.
+    We verify the X-Paystack-Signature header before processing.
+
+    Security:
+      1. Signature verified with HMAC-SHA512(PAYSTACK_SECRET_KEY, raw_body)
+      2. Amount re-verified server-side — never trust the webhook amount alone
+      3. Reference (payment UUID) used for idempotency — duplicate events ignored
+      4. Returns 200 always (Paystack retries on non-200)
     """
 
     permission_classes = [AllowAny]
-    # Do not apply JWT authentication to this endpoint
-    authentication_classes = []
+    authentication_classes = []  # no JWT on this endpoint
 
     @extend_schema(
         request=None,
         responses={200: {"type": "object"}},
-        summary="M-Pesa payment callback",
+        summary="Paystack payment webhook",
         description=(
-            "Daraja webhook for payment confirmation. "
-            "Verified by source IP and amount re-check. "
-            "Returns 200 to Daraja regardless (to prevent retries on our errors)."
+            "Paystack event webhook. Verified by HMAC-SHA512 signature. "
+            "Processes charge.success events to activate subscriptions."
         ),
     )
     def post(self, request):
-        # Always return 200 to Daraja — otherwise they retry
+        # Always return 200 — Paystack retries on non-200
         try:
-            self._process_callback(request)
+            self._process_event(request)
         except Exception as exc:
-            logger.error("M-Pesa callback processing error: %s", exc)
-        return Response({"ResultCode": 0, "ResultDesc": "Accepted"})
+            logger.error("Paystack webhook processing error: %s", exc)
+        return Response({"status": "ok"})
 
-    def _process_callback(self, request):
-        # 1. Verify source IP
-        client_ip = self._get_client_ip(request)
-        if not self._is_safaricom_ip(client_ip):
-            logger.warning("M-Pesa callback from unexpected IP: %s", client_ip)
-            # Log and continue — Safaricom IP ranges change; don't hard-fail in v1
-            # In production: add strict IP filtering
+    def _process_event(self, request):
+        # 1. Verify HMAC-SHA512 signature
+        raw_body = request.body
+        signature = request.META.get("HTTP_X_PAYSTACK_SIGNATURE", "")
+
+        if not _verify_paystack_signature(raw_body, signature):
+            logger.warning(
+                "Paystack webhook: invalid signature. Ignoring event."
+            )
+            return
 
         body = request.data
-        result_code = body.get("Body", {}).get("stkCallback", {}).get("ResultCode")
-        if result_code != 0:
-            # Payment failed or was cancelled by user
-            logger.info("M-Pesa STK callback: payment not completed (ResultCode=%s)", result_code)
+        event = body.get("event", "")
+
+        if event != "charge.success":
+            # We only care about successful charges
+            logger.debug("Paystack webhook: ignoring event %s", event)
             return
 
-        callback_metadata = (
-            body.get("Body", {}).get("stkCallback", {}).get("CallbackMetadata", {})
-        )
-        items = {
-            item["Name"]: item.get("Value")
-            for item in callback_metadata.get("Item", [])
-        }
+        data = body.get("data", {})
+        reference = data.get("reference", "")
+        amount_kobo = int(data.get("amount", 0))  # Paystack amounts are in kobo (1/100 KES)
+        amount_kes = amount_kobo / 100
+        paystack_id = str(data.get("id", ""))
+        gateway_response = data.get("gateway_response", "")
 
-        mpesa_receipt = items.get("MpesaReceiptNumber", "")
-        transaction_amount = float(items.get("Amount", 0))
-        _phone = str(items.get("PhoneNumber", ""))  # reserved for future use
-        _checkout_request_id = (  # reserved: use to look up payment once stored on Payment model
-            body.get("Body", {}).get("stkCallback", {}).get("CheckoutRequestID", "")
+        logger.info(
+            "Paystack charge.success: reference=%s amount_kes=%s gateway=%s",
+            reference,
+            amount_kes,
+            gateway_response,
         )
 
-        # 2. Find the payment by checkout reference
-        # In a full implementation, store checkout_request_id on the payment
-        # For v1: look up by pending status and amount
-        payment = (
-            Payment.objects.filter(
-                status=Payment.Status.PENDING,
-                amount_kes=transaction_amount,
+        # 2. Look up payment by reference (= payment UUID)
+        try:
+            payment = (
+                Payment.objects.filter(provider_ref=reference)
+                .select_related("subscription", "user")
+                .get()
             )
-            .select_related("subscription", "user")
-            .first()
-        )
-
-        if not payment:
-            logger.warning(
-                "M-Pesa callback: no pending payment for amount %s", transaction_amount
-            )
+        except Payment.DoesNotExist:
+            logger.warning("Paystack webhook: no payment found for reference %s", reference)
             return
 
-        # 3. Check idempotency — avoid processing the same receipt twice
-        if Payment.objects.filter(provider_ref=mpesa_receipt).exists():
-            logger.info("M-Pesa callback: duplicate receipt %s — ignoring.", mpesa_receipt)
+        # 3. Idempotency — already confirmed, ignore
+        if payment.status == Payment.Status.CONFIRMED:
+            logger.info("Paystack webhook: payment %s already confirmed — ignoring.", reference)
             return
 
-        # 4. Re-verify amount (SAFETY: never trust the callback amount alone)
-        expected_amount = float(payment.amount_kes)
-        if abs(transaction_amount - expected_amount) > 0.01:
+        # 4. Re-verify amount (SAFETY: never trust webhook amount alone)
+        expected = float(payment.amount_kes)
+        if abs(amount_kes - expected) > 0.01:
             logger.error(
-                "M-Pesa callback AMOUNT MISMATCH: expected %s, got %s (receipt %s)",
-                expected_amount,
-                transaction_amount,
-                mpesa_receipt,
+                "Paystack webhook AMOUNT MISMATCH: expected %.2f, got %.2f (ref %s)",
+                expected,
+                amount_kes,
+                reference,
             )
             return
 
         # 5. Confirm payment and activate subscription
-        payment.provider_ref = mpesa_receipt
+        client_ip = _get_client_ip(request)
+
         payment.status = Payment.Status.CONFIRMED
-        payment.receipt_no = mpesa_receipt
+        payment.receipt_no = paystack_id
         payment.confirmed_at = timezone.now()
-        payment.save(update_fields=["provider_ref", "status", "receipt_no", "confirmed_at"])
+        payment.save(update_fields=["status", "receipt_no", "confirmed_at"])
 
         subscription = payment.subscription
         subscription.status = Subscription.Status.ACTIVE
-        # Set renewal date to 30 days from now
         from datetime import timedelta
-
         subscription.renews_at = timezone.now() + timedelta(days=30)
         subscription.save(update_fields=["status", "renews_at", "updated_at"])
 
@@ -284,49 +298,111 @@ class MpesaCallbackView(APIView):
             actor_type="user",
             object_type="payment",
             object_id=payment.id,
-            after_data={"receipt": mpesa_receipt, "amount": transaction_amount},
+            after_data={
+                "paystack_id": paystack_id,
+                "amount_kes": amount_kes,
+                "reference": reference,
+            },
             ip_address=client_ip,
         )
 
         logger.info(
-            "Plus activated for user %s via M-Pesa receipt %s",
+            "Plus activated for user %s via Paystack ref %s (paystack_id=%s)",
             payment.user_id,
-            mpesa_receipt,
+            reference,
+            paystack_id,
         )
 
-    def _get_client_ip(self, request) -> str:
-        forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
-        return request.META.get("REMOTE_ADDR", "")
 
-    def _is_safaricom_ip(self, ip: str) -> bool:
-        return any(ip.startswith(prefix) for prefix in MPESA_IP_RANGES)
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
-def _initiate_stk_push(phone: str, amount: int, reference: str) -> dict:
-    """Call Daraja STK push API.
+def _verify_paystack_signature(raw_body: bytes, signature: str) -> bool:
+    """Verify Paystack HMAC-SHA512 webhook signature."""
+    secret_key = getattr(settings, "PAYSTACK_SECRET_KEY", "")
+    if not secret_key:
+        logger.error("PAYSTACK_SECRET_KEY is not set — cannot verify webhook signature.")
+        return False
 
-    In staging: use Safaricom sandbox.
-    Returns the Daraja response dict.
+    expected = hmac.new(
+        secret_key.encode("utf-8"),
+        raw_body,
+        hashlib.sha512,
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)
+
+
+def _initialize_paystack_transaction(
+    email: str,
+    amount_kes: float,
+    reference: str,
+    metadata: dict | None = None,
+) -> dict:
+    """Call Paystack Initialize Transaction API.
+
+    POST https://api.paystack.co/transaction/initialize
+    Authorization: Bearer PAYSTACK_SECRET_KEY
+
+    Returns the Paystack response dict containing:
+      - authorization_url: redirect the user here
+      - access_code: for Paystack Popup (inline checkout)
+      - reference: echoes back our reference
     """
-    # TODO: Implement full Daraja STK push using requests
-    # Environment variables needed:
-    #   MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET
-    #   MPESA_SHORTCODE, MPESA_PASSKEY
-    #   MPESA_CALLBACK_URL
-    #   MPESA_ENVIRONMENT (sandbox|production)
-    #
-    # For now: return a mock response so the endpoint works
-    import uuid
+    import requests as http
 
-    logger.info(
-        "STK push placeholder: phone=%s amount=%s ref=%s", phone, amount, reference
-    )
-    return {
-        "CheckoutRequestID": f"mock-{uuid.uuid4().hex[:8]}",
-        "ResponseCode": "0",
-        "ResponseDescription": "Success. Request accepted for processing",
-        "MerchantRequestID": reference,
-        "CustomerMessage": "Success. Request accepted for processing",
+    secret_key = getattr(settings, "PAYSTACK_SECRET_KEY", "")
+
+    if not secret_key:
+        # Dev/test fallback — return a mock response
+        logger.warning("PAYSTACK_SECRET_KEY not set. Returning mock Paystack response.")
+        return {
+            "authorization_url": f"https://checkout.paystack.com/mock-{reference[:8]}",
+            "access_code": f"mock_access_{reference[:8]}",
+            "reference": reference,
+        }
+
+    # Paystack amounts are in the smallest currency unit.
+    # For KES: Paystack uses KES natively (not kobo like NGN).
+    # Amount is in KES cents — multiply by 100.
+    amount_kobo = int(float(amount_kes) * 100)
+
+    payload = {
+        "email": email,
+        "amount": amount_kobo,
+        "reference": reference,
+        "currency": "KES",
+        "callback_url": getattr(
+            settings,
+            "PAYSTACK_CALLBACK_URL",
+            "https://flavorfind.co.ke/plus/success",
+        ),
+        "metadata": metadata or {},
     }
+
+    try:
+        resp = http.post(
+            "https://api.paystack.co/transaction/initialize",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {secret_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+        if not result.get("status"):
+            raise ValueError(f"Paystack error: {result.get('message')}")
+        return result.get("data", {})
+    except Exception as exc:
+        logger.error("Paystack initialize error: %s", exc)
+        raise
+
+
+def _get_client_ip(request) -> str:
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "")

@@ -91,10 +91,12 @@ class Payment(models.Model):
     subscription = models.ForeignKey(
         Subscription, on_delete=models.CASCADE, related_name="payments"
     )
-    provider = models.CharField(max_length=20, default="mpesa")
-    # M-Pesa transaction ID — unique idempotency key
+    provider = models.CharField(max_length=20, default="paystack")
+    # Paystack transaction reference — our payment UUID (idempotency key)
     provider_ref = models.CharField(max_length=100, unique=True)
-    # Amount re-verified server-side — never trust the callback amount alone
+    # Paystack authorization URL returned at initialize time (for redirect)
+    checkout_url = models.URLField(max_length=500, blank=True, default="")
+    # Amount re-verified server-side — never trust the webhook amount alone
     amount_kes = models.DecimalField(max_digits=10, decimal_places=2)
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True

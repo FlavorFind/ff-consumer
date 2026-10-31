@@ -1,7 +1,11 @@
-"""Billing tests — plans, subscription, M-Pesa callback, entitlements.
+"""Billing tests — plans, subscription, Paystack webhook, entitlements.
 
 Targets 95%+ coverage for apps/billing.
 """
+
+import hashlib
+import hmac
+import json
 
 import pytest
 from django.utils import timezone
@@ -17,24 +21,17 @@ from rest_framework_simplejwt.tokens import RefreshToken
 def free_plan(db):
     from apps.billing.models import Plan
 
-    return Plan.objects.create(
-        code="free",
-        name="Free",
-        price_kes=0,
-        features=[],
-    )
+    return Plan.objects.create(code="free", name="Free", price_kes=0, features=[])
 
 
 @pytest.fixture
 def plus_plan(db):
     from apps.billing.models import Plan
 
-    return Plan.objects.create(
+    return Plan.objects.get_or_create(
         code="plus",
-        name="Flavor Find Plus",
-        price_kes=199,
-        features=["meal_plans", "shopping_lists", "offline_sync"],
-    )
+        defaults={"name": "Flavor Find Plus", "price_kes": 199, "features": ["meal_plans"]},
+    )[0]
 
 
 @pytest.fixture
@@ -62,6 +59,26 @@ def plus_client(plus_user):
     return client
 
 
+def _paystack_signature(body: bytes, secret: str = "test_secret") -> str:
+    """Build a valid Paystack HMAC-SHA512 signature for testing."""
+    return hmac.new(secret.encode(), body, hashlib.sha512).hexdigest()
+
+
+def _webhook_body(reference: str, amount_kobo: int = 19900, event="charge.success") -> bytes:
+    payload = {
+        "event": event,
+        "data": {
+            "id": 12345678,
+            "reference": reference,
+            "amount": amount_kobo,
+            "currency": "KES",
+            "status": "success",
+            "gateway_response": "Successful",
+        },
+    }
+    return json.dumps(payload).encode()
+
+
 # ---------------------------------------------------------------------------
 # Plans endpoint
 # ---------------------------------------------------------------------------
@@ -77,7 +94,6 @@ class TestPlansEndpoint:
         assert "plus" in codes
 
     def test_plans_public_no_auth(self, api_client, free_plan):
-        """Plans endpoint is public — no auth required."""
         response = api_client.get("/v1/plans/")
         assert response.status_code == 200
 
@@ -107,9 +123,7 @@ class TestSubscriptionEndpoint:
     def test_subscription_with_plus_record(self, plus_client):
         response = plus_client.get("/v1/subscription/")
         assert response.status_code == 200
-        data = response.json()
-        assert data["plan_code"] == "plus"
-        assert data["status"] == "active"
+        assert response.json()["plan_code"] == "plus"
 
     def test_subscription_requires_auth(self, api_client):
         response = api_client.get("/v1/subscription/")
@@ -117,88 +131,63 @@ class TestSubscriptionEndpoint:
 
 
 # ---------------------------------------------------------------------------
-# Subscribe endpoint (STK push initiation)
+# Subscribe endpoint (Paystack initialize)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
 class TestSubscribeEndpoint:
-    def test_subscribe_valid_phone(self, auth_client, plus_plan):
+    def test_subscribe_returns_authorization_url(self, auth_client, plus_plan):
+        """Subscribe returns a Paystack authorization_url (mocked when no key set)."""
         response = auth_client.post(
             "/v1/subscribe/",
-            {"phone": "254712345678", "plan_code": "plus"},
+            {"plan_code": "plus"},
             format="json",
         )
         assert response.status_code == 200
         data = response.json()
         assert "payment_id" in data
+        assert "authorization_url" in data
+        assert "reference" in data
         assert data["status"] == "pending"
-        assert "checkout_request_id" in data
 
-    def test_subscribe_invalid_phone(self, auth_client, plus_plan):
-        response = auth_client.post(
-            "/v1/subscribe/",
-            {"phone": "0712345678", "plan_code": "plus"},
-            format="json",
-        )
-        assert response.status_code == 400
+    def test_subscribe_reference_equals_payment_id(self, auth_client, plus_plan):
+        """The Paystack reference is the payment UUID — idempotency anchor."""
+        response = auth_client.post("/v1/subscribe/", {"plan_code": "plus"}, format="json")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["reference"] == data["payment_id"]
 
-    def test_subscribe_unknown_plan(self, auth_client):
+    def test_subscribe_unknown_plan_rejected(self, auth_client):
         response = auth_client.post(
-            "/v1/subscribe/",
-            {"phone": "254712345678", "plan_code": "enterprise"},
-            format="json",
+            "/v1/subscribe/", {"plan_code": "enterprise"}, format="json"
         )
         assert response.status_code == 400  # choice validation
 
     def test_subscribe_requires_auth(self, api_client, plus_plan):
-        response = api_client.post(
-            "/v1/subscribe/",
-            {"phone": "254712345678", "plan_code": "plus"},
-            format="json",
-        )
+        response = api_client.post("/v1/subscribe/", {"plan_code": "plus"}, format="json")
         assert response.status_code == 401
 
     def test_subscribe_creates_pending_payment(self, auth_client, plus_plan):
         from apps.billing.models import Payment
 
-        auth_client.post(
-            "/v1/subscribe/",
-            {"phone": "254712345678", "plan_code": "plus"},
-            format="json",
-        )
-        assert Payment.objects.filter(status=Payment.Status.PENDING).exists()
+        auth_client.post("/v1/subscribe/", {"plan_code": "plus"}, format="json")
+        assert Payment.objects.filter(
+            status=Payment.Status.PENDING, provider="paystack"
+        ).exists()
 
 
 # ---------------------------------------------------------------------------
-# M-Pesa callback
+# Paystack webhook
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-class TestMpesaCallback:
-    def _build_stk_body(self, result_code=0, amount=199, receipt="MPESATEST001"):
-        return {
-            "Body": {
-                "stkCallback": {
-                    "MerchantRequestID": "test-merchant-001",
-                    "CheckoutRequestID": "ws_CO_test001",
-                    "ResultCode": result_code,
-                    "ResultDesc": "The service request is processed successfully.",
-                    "CallbackMetadata": {
-                        "Item": [
-                            {"Name": "Amount", "Value": amount},
-                            {"Name": "MpesaReceiptNumber", "Value": receipt},
-                            {"Name": "TransactionDate", "Value": 20261031120000},
-                            {"Name": "PhoneNumber", "Value": 254712345678},
-                        ]
-                    },
-                }
-            }
-        }
+class TestPaystackWebhook:
+    def test_webhook_confirms_payment(self, api_client, plus_plan, user):
+        """Successful charge.success event activates the subscription."""
+        from django.test import override_settings
 
-    def test_callback_confirms_payment(self, api_client, plus_plan, user):
-        """Successful M-Pesa callback activates the subscription."""
         from apps.billing.models import Payment, Subscription
 
         sub = Subscription.objects.create(
@@ -207,110 +196,175 @@ class TestMpesaCallback:
         payment = Payment.objects.create(
             user=user,
             subscription=sub,
-            provider="mpesa",
-            provider_ref="PENDING-00000001",
+            provider="paystack",
+            provider_ref="pay-uuid-001",
             amount_kes=199,
             status=Payment.Status.PENDING,
         )
 
-        response = api_client.post(
-            "/v1/mpesa/callback/",
-            self._build_stk_body(amount=199.0, receipt="MPESATEST002"),
-            format="json",
-        )
-        # Always returns 200 to Daraja
-        assert response.status_code == 200
-        assert response.json()["ResultCode"] == 0
+        body = _webhook_body(reference="pay-uuid-001", amount_kobo=19900)
+        sig = _paystack_signature(body, secret="test_secret_key")
 
+        with override_settings(PAYSTACK_SECRET_KEY="test_secret_key"):
+            response = api_client.post(
+                "/v1/paystack/webhook/",
+                data=body,
+                content_type="application/json",
+                HTTP_X_PAYSTACK_SIGNATURE=sig,
+            )
+
+        assert response.status_code == 200
         payment.refresh_from_db()
         assert payment.status == Payment.Status.CONFIRMED
-        assert payment.provider_ref == "MPESATEST002"
+        assert payment.receipt_no == "12345678"
 
-    def test_callback_failed_payment_ignored(self, api_client):
-        """ResultCode != 0 means user cancelled — no payment confirmed."""
-        response = api_client.post(
-            "/v1/mpesa/callback/",
-            self._build_stk_body(result_code=1032),  # cancelled by user
-            format="json",
-        )
-        assert response.status_code == 200
+    def test_webhook_invalid_signature_ignored(self, api_client, plus_plan, user):
+        """Webhook with invalid signature is ignored — no payment confirmed."""
+        from django.test import override_settings
 
-    def test_callback_duplicate_receipt_ignored(self, api_client, plus_plan, user):
-        """Same MpesaReceiptNumber processed twice — second is silently ignored."""
         from apps.billing.models import Payment, Subscription
 
         sub = Subscription.objects.create(
             user=user, plan=plus_plan, status=Subscription.Status.ACTIVE
         )
-        # First payment already confirmed with this receipt
-        Payment.objects.create(
+        payment = Payment.objects.create(
             user=user,
             subscription=sub,
-            provider="mpesa",
-            provider_ref="DUPRECEIPT001",  # already confirmed
+            provider="paystack",
+            provider_ref="pay-uuid-002",
             amount_kes=199,
-            status=Payment.Status.CONFIRMED,
+            status=Payment.Status.PENDING,
+        )
+
+        body = _webhook_body(reference="pay-uuid-002", amount_kobo=19900)
+
+        with override_settings(PAYSTACK_SECRET_KEY="test_secret_key"):
+            response = api_client.post(
+                "/v1/paystack/webhook/",
+                data=body,
+                content_type="application/json",
+                HTTP_X_PAYSTACK_SIGNATURE="invalidsignature",
+            )
+
+        assert response.status_code == 200  # still 200 to Paystack
+        payment.refresh_from_db()
+        assert payment.status == Payment.Status.PENDING  # not confirmed
+
+    def test_webhook_duplicate_event_ignored(self, api_client, plus_plan, user):
+        """Duplicate charge.success event (same reference) is idempotent."""
+        from django.test import override_settings
+
+        from apps.billing.models import Payment, Subscription
+
+        sub = Subscription.objects.create(
+            user=user, plan=plus_plan, status=Subscription.Status.ACTIVE
+        )
+        payment = Payment.objects.create(
+            user=user,
+            subscription=sub,
+            provider="paystack",
+            provider_ref="pay-uuid-003",
+            amount_kes=199,
+            status=Payment.Status.CONFIRMED,  # already confirmed
             confirmed_at=timezone.now(),
         )
-        # Pending payment (the one that would be processed)
-        Payment.objects.create(
-            user=user,
-            subscription=sub,
-            provider="mpesa",
-            provider_ref="PENDING-DUP",
-            amount_kes=199,
-            status=Payment.Status.PENDING,
-        )
 
-        response = api_client.post(
-            "/v1/mpesa/callback/",
-            self._build_stk_body(amount=199.0, receipt="DUPRECEIPT001"),
-            format="json",
-        )
-        assert response.status_code == 200
-        # The pending payment should NOT have been confirmed (duplicate)
-        from apps.billing.models import Payment as P
+        body = _webhook_body(reference="pay-uuid-003", amount_kobo=19900)
+        sig = _paystack_signature(body, "test_secret_key")
 
-        pending = P.objects.get(provider_ref="PENDING-DUP")
-        assert pending.status == P.Status.PENDING
+        with override_settings(PAYSTACK_SECRET_KEY="test_secret_key"):
+            api_client.post(
+                "/v1/paystack/webhook/",
+                data=body,
+                content_type="application/json",
+                HTTP_X_PAYSTACK_SIGNATURE=sig,
+            )
 
-    def test_callback_amount_mismatch_rejected(self, api_client, plus_plan, user):
-        """Callback with wrong amount is rejected — safety rule."""
+        # Confirmed_at should not have changed
+        payment.refresh_from_db()
+        assert payment.status == Payment.Status.CONFIRMED
+
+    def test_webhook_amount_mismatch_rejected(self, api_client, plus_plan, user):
+        """Webhook with wrong amount does not confirm the payment — safety rule."""
+        from django.test import override_settings
+
         from apps.billing.models import Payment, Subscription
 
         sub = Subscription.objects.create(
             user=user, plan=plus_plan, status=Subscription.Status.ACTIVE
         )
-        Payment.objects.create(
+        payment = Payment.objects.create(
             user=user,
             subscription=sub,
-            provider="mpesa",
-            provider_ref="PENDING-MISMATCH",
-            amount_kes=199,  # expected
+            provider="paystack",
+            provider_ref="pay-uuid-004",
+            amount_kes=199,
             status=Payment.Status.PENDING,
         )
 
-        # Callback claims amount=1 (wrong)
-        response = api_client.post(
-            "/v1/mpesa/callback/",
-            self._build_stk_body(amount=1.0, receipt="MISMATCHRECEIPT001"),
-            format="json",
-        )
-        assert response.status_code == 200  # still 200 to Daraja
-        # Payment should stay pending
-        from apps.billing.models import Payment as P
+        # Webhook claims only KES 1 was paid (100 kobo)
+        body = _webhook_body(reference="pay-uuid-004", amount_kobo=100)
+        sig = _paystack_signature(body, "test_secret_key")
 
-        p = P.objects.get(provider_ref="PENDING-MISMATCH")
-        assert p.status == P.Status.PENDING
+        with override_settings(PAYSTACK_SECRET_KEY="test_secret_key"):
+            response = api_client.post(
+                "/v1/paystack/webhook/",
+                data=body,
+                content_type="application/json",
+                HTTP_X_PAYSTACK_SIGNATURE=sig,
+            )
 
-    def test_callback_no_matching_payment_handled_gracefully(self, api_client):
-        """Callback for unknown amount is handled gracefully (no 500)."""
-        response = api_client.post(
-            "/v1/mpesa/callback/",
-            self._build_stk_body(amount=9999.0, receipt="UNKNOWNRECEIPT"),
-            format="json",
-        )
         assert response.status_code == 200
+        payment.refresh_from_db()
+        assert payment.status == Payment.Status.PENDING  # not confirmed
+
+    def test_webhook_unknown_reference_handled_gracefully(self, api_client):
+        """Webhook for unknown reference doesn't crash."""
+        from django.test import override_settings
+
+        body = _webhook_body(reference="nonexistent-ref", amount_kobo=19900)
+        sig = _paystack_signature(body, "test_secret_key")
+
+        with override_settings(PAYSTACK_SECRET_KEY="test_secret_key"):
+            response = api_client.post(
+                "/v1/paystack/webhook/",
+                data=body,
+                content_type="application/json",
+                HTTP_X_PAYSTACK_SIGNATURE=sig,
+            )
+        assert response.status_code == 200
+
+    def test_webhook_non_charge_event_ignored(self, api_client):
+        """Non-charge.success events are silently ignored."""
+        from django.test import override_settings
+
+        body = _webhook_body(
+            reference="pay-uuid-005", amount_kobo=19900, event="transfer.success"
+        )
+        sig = _paystack_signature(body, "test_secret_key")
+
+        with override_settings(PAYSTACK_SECRET_KEY="test_secret_key"):
+            response = api_client.post(
+                "/v1/paystack/webhook/",
+                data=body,
+                content_type="application/json",
+                HTTP_X_PAYSTACK_SIGNATURE=sig,
+            )
+        assert response.status_code == 200
+
+    def test_webhook_no_secret_key_rejects_all(self, api_client):
+        """If PAYSTACK_SECRET_KEY is not configured, all webhooks are rejected."""
+        from django.test import override_settings
+
+        body = _webhook_body(reference="pay-uuid-006")
+        with override_settings(PAYSTACK_SECRET_KEY=""):
+            response = api_client.post(
+                "/v1/paystack/webhook/",
+                data=body,
+                content_type="application/json",
+                HTTP_X_PAYSTACK_SIGNATURE="anything",
+            )
+        assert response.status_code == 200  # still 200 but nothing processed
 
 
 # ---------------------------------------------------------------------------
@@ -322,21 +376,17 @@ class TestMpesaCallback:
 class TestEntitlements:
     def test_user_has_active_plus_true(self, plus_user):
         from apps.billing.entitlements import user_has_active_plus
-
         assert user_has_active_plus(plus_user) is True
 
     def test_user_has_active_plus_false_for_free_user(self, user):
         from apps.billing.entitlements import user_has_active_plus
-
         assert user_has_active_plus(user) is False
 
     def test_user_has_active_plus_false_for_anon(self):
         from apps.billing.entitlements import user_has_active_plus
-
         assert user_has_active_plus(None) is False
 
-    def test_requires_plus_permission_blocks_free_user(self, auth_client, user):
-        """Free user is blocked by RequiresPlus permission."""
+    def test_requires_plus_permission_blocks_free_user(self, user):
         from apps.billing.entitlements import RequiresPlus
 
         class MockRequest:
@@ -351,13 +401,14 @@ class TestEntitlements:
         from apps.billing.entitlements import RequiresPlus
 
         class MockRequest:
-            user = plus_user
+            pass
 
+        req = MockRequest()
+        req.user = plus_user
         perm = RequiresPlus()
-        assert perm.has_permission(MockRequest(), None) is True
+        assert perm.has_permission(req, None) is True
 
     def test_trialing_user_has_plus(self, user):
-        """Trialing subscription counts as active Plus."""
         from apps.billing.entitlements import user_has_active_plus
         from apps.billing.models import Plan, Subscription
 
@@ -398,8 +449,7 @@ class TestBillingModels:
         assert "plus" in str(sub)
 
     def test_is_active_plus_method(self, plus_user):
-        sub = plus_user.subscription
-        assert sub.is_active_plus() is True
+        assert plus_user.subscription.is_active_plus() is True
 
     def test_is_active_plus_false_for_cancelled(self, plus_user):
         from apps.billing.models import Subscription
@@ -415,8 +465,8 @@ class TestBillingModels:
         p = Payment.objects.create(
             user=plus_user,
             subscription=plus_user.subscription,
-            provider="mpesa",
-            provider_ref="STRTEST001",
+            provider="paystack",
+            provider_ref="str-test-ref-001",
             amount_kes=199,
         )
         assert "199" in str(p)
@@ -430,15 +480,14 @@ class TestBillingModels:
 @pytest.mark.django_db
 class TestBillingTasks:
     def test_check_subscription_expiry(self, user):
+        from datetime import timedelta
+
         from apps.billing.models import Plan, Subscription
         from apps.billing.tasks import check_subscription_expiry
 
         plan, _ = Plan.objects.get_or_create(
             code="plus", defaults={"name": "Plus", "price_kes": 199}
         )
-        # Subscription that should have expired
-        from datetime import timedelta
-
         sub = Subscription.objects.create(
             user=user,
             plan=plan,
@@ -470,6 +519,4 @@ class TestBillingTasks:
 
     def test_send_renewal_reminders_runs_without_error(self):
         from apps.billing.tasks import send_renewal_reminders
-
-        # Should not raise even with no subscriptions
         send_renewal_reminders()

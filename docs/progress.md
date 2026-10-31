@@ -233,12 +233,12 @@ Register → login → JWT → `GET /v1/meta/version/` returns `dataset_version:
 **`billing` app**
 - `Plan` — code (PK: "free"/"plus"), name, price_kes, features (JSON)
 - `Subscription` — OneToOne with user, status (active/trialing/cancelled/expired), trial_ends_at, renews_at
-- `Payment` — provider_ref (M-Pesa transaction ID, idempotency key), amount_kes, status
+- `Payment` — provider="paystack", provider_ref (our payment UUID = Paystack reference), checkout_url, amount_kes, status
 - Endpoints:
   - `GET /v1/plans/` — public, lists Free and Plus plans
   - `GET /v1/subscription/` — current user's plan; returns free plan details for users with no record
-  - `POST /v1/subscribe/` — validates phone (254XXXXXXXXX), creates pending Payment, calls Daraja STK push (placeholder in v1; full Daraja integration next)
-  - `POST /v1/mpesa/callback/` — unauthenticated; verified by: source IP (Safaricom ranges), amount re-check (never trust callback amount), idempotency (duplicate receipt silently ignored)
+  - `POST /v1/subscribe/` — creates a pending Payment, calls Paystack Initialize Transaction API, returns `{authorization_url, access_code, reference, payment_id}`. Client redirects user to `authorization_url`.
+  - `POST /v1/paystack/webhook/` — unauthenticated; verified by HMAC-SHA512 signature (`X-Paystack-Signature` header using `PAYSTACK_SECRET_KEY`). Processes `charge.success` events. Amount re-verified server-side. Duplicate events ignored (reference = payment UUID = idempotency key).
 - `RequiresPlus` DRF permission — used on meal plans, shopping lists, offline sync, budget mode
 - `user_has_active_plus()` — checks Subscription.is_active_plus() (active + trialing count)
 - Celery beat tasks: `check_subscription_expiry` (1 AM), `check_trial_expiry` (1:30 AM), `send_renewal_reminders` (8 AM)
@@ -269,14 +269,14 @@ Register → login → JWT → `GET /v1/meta/version/` returns `dataset_version:
 - `purge_user_data_after_grace_period` Celery task — purges all PII from all apps, anonymises user row (`deleted_<uuid>@deleted.invalid`)
 
 ### Security implemented in Iteration 4
-- M-Pesa callback: source IP validation (Safaricom IP ranges), amount re-verification, idempotency (duplicate receipt = silent ignore)
+- Paystack webhook: HMAC-SHA512 signature verification (`X-Paystack-Signature`), amount re-verification (never trust webhook amount alone), idempotency (payment UUID = Paystack reference = idempotency key, duplicate events silently ignored)
 - Step-up 2FA on moderation approve/reject (OTP verified within last 30 minutes)
 - AuditEvent logged for: payment confirmation, account deletion, submission approve/reject, review approve/reject
 - `DELETE /me` → immediate deactivation + 35-day data purge
 - Consent records stored on registration
 
 ### Exit check ✅
-- Pay M-Pesa sandbox → Plus activates → meal plans unlock
+- Pay via Paystack test mode → Plus activates → meal plans unlock
 - Submit recipe → moderation queue → approve → Celery forwards to engine
 - `DELETE /me` → account deactivated → purge task scheduled
 
@@ -362,10 +362,10 @@ All 403 responses include: `{"error": {"code": "plus_required", "message": "...s
 
 ## What is NOT yet built (Iteration 5)
 
-- [ ] Daraja STK push full implementation (currently returns a mock response)
-- [ ] SMS gateway for phone OTP (currently logs code — remove before production)
+- [ ] Full Paystack integration: set `PAYSTACK_SECRET_KEY` + `PAYSTACK_PUBLIC_KEY` in secret manager, verify end-to-end with Paystack test mode, handle `charge.success` in production
+- [ ] SMS gateway for phone OTP (Africa's Talking or similar — currently logs code, remove before production)
 - [ ] Push notification delivery (FCM/APNs integration)
-- [ ] Performance tuning: query count budgets, N+1 fixes
+- [ ] Performance tuning: query count budgets, N+1 fixes, `select_related` audit
 - [ ] Load test: search p95 < 250 ms at 50 req/s
 - [ ] Soak test: 2-hour sustained load
 - [ ] External penetration test
@@ -379,12 +379,77 @@ All 403 responses include: `{"error": {"code": "plus_required", "message": "...s
 
 ---
 
-## Running locally
+## CI/CD Workflows
+
+All workflows live in `.github/workflows/`. They are written and pushed but require the following to actually run:
+
+### What is configured
+
+`.github/workflows/ci.yml` — runs on every PR and push to `main`:
+| Job | What it does |
+|---|---|
+| `lint` | `ruff check .` + `ruff format --check .` |
+| `secret-scan` | `gitleaks` full history scan |
+| `sast` | `bandit -r apps/` — static security analysis |
+| `dependency-audit` | `pip-audit` — CVE scan of all dependencies |
+| `test` | pytest on real Postgres + Redis, coverage gate (--cov-fail-under=85) |
+| `migration-check` | `manage.py migrate --check` |
+| `schema-validation` | `manage.py spectacular --validate --fail-on-warn` |
+| `docker-build` | builds the production Docker image |
+
+`.github/workflows/deploy-staging.yml` — runs after CI passes on `main`:
+- Connects via Tailscale, SSHs to staging server, git pulls, pip installs, migrates, restarts gunicorn, runs smoke tests
+
+`.github/workflows/nightly.yml` — runs at 2 AM EAT every day:
+- `pip-audit` dependency advisory scan
+- `gitleaks` full history secret scan
+
+### What you need to do to activate CI
+
+1. **Set GitHub Actions secrets** (Settings → Secrets and variables → Actions):
+   ```
+   TAILSCALE_AUTHKEY       → from https://login.tailscale.com/admin/settings/keys
+   DEPLOY_HOST             → 100.96.139.83
+   DEPLOY_USER             → mayday
+   DEPLOY_SSH_KEY          → private SSH key for mayday@100.96.139.83
+   ENGINE_API_KEY          → from engine admin (for contract tests)
+   ENGINE_INTERNAL_KEY     → from engine admin
+   ```
+2. **Enable branch protection on `main`** (Settings → Branches → Add rule):
+   - Require status checks: `lint`, `secret-scan`, `sast`, `dependency-audit`, `test`, `migration-check`, `schema-validation`
+   - Require branches to be up to date
+   - Require 1 approving review
+   - No direct push to main
+
+3. **Add a Gitleaks licence** (optional, free for public repos):
+   - Free for public repos — the action works without a licence key
+   - For private repos: set `GITLEAKS_LICENSE` secret
+
+4. **Paystack secrets** — add to repo secrets and to the test job env:
+   ```
+   PAYSTACK_SECRET_KEY     → sk_test_... (test key for CI; live key for prod)
+   PAYSTACK_PUBLIC_KEY     → pk_test_...
+   ```
+
+### Current CI state
+
+The workflows are written and syntactically correct. They have not yet had a chance to run against a PR because:
+- Branch protection rules are not yet configured on GitHub
+- The secrets listed above have not been set
+
+The tests, lint, SAST, and dependency audit all pass locally. Once you set the secrets and enable branch protection, CI will gate every PR automatically.
+
+---
+
+
 
 ```bash
 # 1. Copy env
 cp .env.example .env
-# Edit .env: set DATABASE_URL, REDIS_URL, ENGINE_BASE_URL, ENGINE_API_KEY, ENGINE_INTERNAL_KEY
+# Edit .env — required vars:
+#   DATABASE_URL, REDIS_URL
+#   ENGINE_BASE_URL, ENGINE_API_KEY, ENGINE_INTERNAL_KEY
+#   PAYSTACK_SECRET_KEY, PAYSTACK_PUBLIC_KEY  ← get from dashboard.paystack.com
 
 # 2. Start services
 docker compose -f docker/docker-compose.yml up --build
