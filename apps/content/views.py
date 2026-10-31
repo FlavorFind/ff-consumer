@@ -42,11 +42,17 @@ class RegionsView(APIView):
         description="Returns all Kenyan counties and regions from the engine. Cached 24 hours.",
     )
     def get(self, request):
-        from apps.engine_client.client import engine
+        from apps.engine_client.client import EngineUnavailableError, engine
 
         lang = request.query_params.get("lang", "en")
-        result = engine.get_regions(lang=lang)
-        return Response(result)
+        try:
+            result = engine.get_regions(lang=lang)
+            return Response(result)
+        except EngineUnavailableError:
+            return Response(
+                {"engine_status": "degraded", "regions": []},
+                status=503,
+            )
 
 
 class StoryListView(APIView):

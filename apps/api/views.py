@@ -56,7 +56,7 @@ class MetaVersionView(APIView):
             dataset_version = data.get("dataset_version", "unknown")
             engine_version = data.get("engine_version", "unknown")
         except Exception as exc:
-            logger.warning("Could not fetch engine version: %s", exc)
+            logger.warning("Could not fetch engine version: %s: %s", type(exc).__name__, exc)
             engine_status = "degraded"
             # Read the cached dataset version without making another network call
             from django.core.cache import cache

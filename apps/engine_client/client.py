@@ -156,6 +156,7 @@ class EngineClient:
                 requests.RequestException,
                 ConnectionError,  # raised by test mocks and some network layers
                 OSError,
+                ValueError,  # JSON decode errors (e.g. Cloudflare challenge page)
             ) as exc:
                 last_exc = exc
                 attempt += 1
@@ -168,6 +169,12 @@ class EngineClient:
                         raise
 
         self._record_failure()
+        if last_exc:
+            logger.error(
+                "Engine request failed after retry: %s: %s",
+                type(last_exc).__name__,
+                last_exc,
+            )
         raise EngineUnavailableError(f"Engine request failed: {last_exc}") from last_exc
 
     # -------------------------------------------------------------------------
