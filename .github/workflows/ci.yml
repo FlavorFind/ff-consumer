@@ -5,6 +5,7 @@ on:
     branches: [main]
   push:
     branches: [main]
+  workflow_call:   # allows deploy-staging.yml to call this as a CI gate
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

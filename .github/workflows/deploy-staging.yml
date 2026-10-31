@@ -1,57 +1,85 @@
 name: Deploy to Staging
 
-# DISABLED — self-hosted deploy via Tailscale/SSH not yet configured.
-# Render auto-deploys from main. Re-enable this once the staging server
-# SSH keys and Tailscale OAuth client are set in repo secrets.
-on:
-  workflow_dispatch:   # manual trigger only — never runs automatically
+# Deploys to the self-hosted Lenovo ThinkPad staging server via Tailscale + SSH.
+# Gate: CI must pass before deploy runs (ci-gate calls ci.yml as a reusable workflow).
+# Verify: smoke test runs on the server itself (avoids Cloudflare blocking GitHub IPs).
+#
+# Server: mayday@100.96.139.83 (Tailscale IP)
+# Path:   /home/mayday/ff-consumer
+# Port:   8001 (engine is on 8000)
+# Service: ff-consumer (systemd)
 
-concurrency:
-  group: deploy-staging
-  cancel-in-progress: false
+on:
+  push:
+    branches: [main]
 
 jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # 1. CI gate — runs all lint/test/migration/schema jobs before deploy
+  # ──────────────────────────────────────────────────────────────────────────
+  ci-gate:
+    name: CI gate (lint + tests + migrations + schema)
+    uses: ./.github/workflows/ci.yml
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 2. Deploy + verify (runs on server via SSH — not affected by Cloudflare)
+  # ──────────────────────────────────────────────────────────────────────────
   deploy:
-    name: Deploy to self-hosted staging
+    name: Deploy to staging server
     runs-on: ubuntu-latest
+    needs: ci-gate
+    environment: staging
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
 
     steps:
-      - uses: actions/checkout@v4
-
       - name: Connect to Tailscale
         uses: tailscale/github-action@v2
         with:
-          oauth-client-id: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TAILSCALE_OAUTH_SECRET }}
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
           tags: tag:ci
 
-      - name: Deploy to staging server
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          timeout: 300s
           script: |
-            set -e
+            set -euo pipefail
             cd /home/mayday/ff-consumer
-            git fetch origin
+
+            echo "=== [1/6] Pull latest code ==="
+            git fetch --prune origin
             git checkout main
             git reset --hard origin/main
-            .venv/bin/pip install -q -r requirements/prod.txt --prefer-binary
-            .venv/bin/python manage.py migrate --no-input
-            .venv/bin/python manage.py collectstatic --no-input
-            .venv/bin/python manage.py seed_plans
-            sudo systemctl reload gunicorn-ff-consumer || sudo systemctl restart gunicorn-ff-consumer
-            echo "Deploy complete."
 
-      - name: Smoke tests
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            BASE=http://localhost:8001
-            curl -sf "$BASE/v1/health/" | grep '"status":"ok"'
-            curl -sf "$BASE/v1/meta/version/" | grep '"consumer_version"'
-            echo "Smoke tests passed."
+            echo "=== [2/6] Install/update dependencies ==="
+            .venv/bin/pip install -q -r requirements/prod.txt --prefer-binary
+
+            echo "=== [3/6] Run migrations ==="
+            .venv/bin/python manage.py migrate --no-input
+
+            echo "=== [4/6] Collect static files ==="
+            .venv/bin/python manage.py collectstatic --no-input --clear
+
+            echo "=== [5/6] Seed plans ==="
+            .venv/bin/python manage.py seed_plans
+
+            echo "=== [6/6] Reload Gunicorn ==="
+            sudo systemctl reload ff-consumer || sudo systemctl restart ff-consumer
+            sleep 3
+            sudo systemctl is-active ff-consumer
+
+            echo "=== Smoke test (local) ==="
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8001/v1/health/)
+            echo "Health: $STATUS"
+            [ "$STATUS" = "200" ] || exit 1
+
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8001/v1/meta/version/)
+            echo "Version: $STATUS"
+            [ "$STATUS" = "200" ] || exit 1
+
+            echo "Deploy complete ✓"
