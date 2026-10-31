@@ -27,8 +27,10 @@ django-otp==1.7.5
 django-two-factor-auth==1.18.1
 qrcode==8.2
 
+# HTTP client (engine API calls)
+requests==2.32.3
+
 # Utilities
 Pillow==13.0.0
 python-slugify==8.0.4
 whitenoise==6.8.2
-# No longer needed (phone OTP removed)
