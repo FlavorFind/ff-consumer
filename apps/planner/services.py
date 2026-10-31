@@ -21,8 +21,12 @@ def parse_iso_week(week_str: str) -> date:
     return monday
 
 
-def date_to_iso_week(d: date) -> str:
+def date_to_iso_week(d) -> str:
     """Convert a Monday date back to YYYY-Www format."""
+    from datetime import date
+
+    if isinstance(d, str):
+        d = date.fromisoformat(d)
     return f"{d.isocalendar().year}-W{d.isocalendar().week:02d}"
 
 

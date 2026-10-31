@@ -68,9 +68,7 @@ def verify_otp(phone: str, code: str) -> User:
     Raises ValueError with a user-safe message on any failure.
     """
     otp = (
-        OTPRequest.objects.filter(phone=phone, used_at__isnull=True)
-        .order_by("-created_at")
-        .first()
+        OTPRequest.objects.filter(phone=phone, used_at__isnull=True).order_by("-created_at").first()
     )
 
     if not otp:

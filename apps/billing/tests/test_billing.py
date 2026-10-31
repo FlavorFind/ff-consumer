@@ -159,9 +159,7 @@ class TestSubscribeEndpoint:
         assert data["reference"] == data["payment_id"]
 
     def test_subscribe_unknown_plan_rejected(self, auth_client):
-        response = auth_client.post(
-            "/v1/subscribe/", {"plan_code": "enterprise"}, format="json"
-        )
+        response = auth_client.post("/v1/subscribe/", {"plan_code": "enterprise"}, format="json")
         assert response.status_code == 400  # choice validation
 
     def test_subscribe_requires_auth(self, api_client, plus_plan):
@@ -172,9 +170,7 @@ class TestSubscribeEndpoint:
         from apps.billing.models import Payment
 
         auth_client.post("/v1/subscribe/", {"plan_code": "plus"}, format="json")
-        assert Payment.objects.filter(
-            status=Payment.Status.PENDING, provider="paystack"
-        ).exists()
+        assert Payment.objects.filter(status=Payment.Status.PENDING, provider="paystack").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -338,9 +334,7 @@ class TestPaystackWebhook:
         """Non-charge.success events are silently ignored."""
         from django.test import override_settings
 
-        body = _webhook_body(
-            reference="pay-uuid-005", amount_kobo=19900, event="transfer.success"
-        )
+        body = _webhook_body(reference="pay-uuid-005", amount_kobo=19900, event="transfer.success")
         sig = _paystack_signature(body, "test_secret_key")
 
         with override_settings(PAYSTACK_SECRET_KEY="test_secret_key"):
@@ -376,14 +370,17 @@ class TestPaystackWebhook:
 class TestEntitlements:
     def test_user_has_active_plus_true(self, plus_user):
         from apps.billing.entitlements import user_has_active_plus
+
         assert user_has_active_plus(plus_user) is True
 
     def test_user_has_active_plus_false_for_free_user(self, user):
         from apps.billing.entitlements import user_has_active_plus
+
         assert user_has_active_plus(user) is False
 
     def test_user_has_active_plus_false_for_anon(self):
         from apps.billing.entitlements import user_has_active_plus
+
         assert user_has_active_plus(None) is False
 
     def test_requires_plus_permission_blocks_free_user(self, user):
@@ -415,9 +412,7 @@ class TestEntitlements:
         plan, _ = Plan.objects.get_or_create(
             code="plus", defaults={"name": "Plus", "price_kes": 199}
         )
-        Subscription.objects.create(
-            user=user, plan=plan, status=Subscription.Status.TRIALING
-        )
+        Subscription.objects.create(user=user, plan=plan, status=Subscription.Status.TRIALING)
         assert user_has_active_plus(user) is True
 
     def test_expired_sub_does_not_have_plus(self, user):
@@ -427,9 +422,7 @@ class TestEntitlements:
         plan, _ = Plan.objects.get_or_create(
             code="plus", defaults={"name": "Plus", "price_kes": 199}
         )
-        Subscription.objects.create(
-            user=user, plan=plan, status=Subscription.Status.EXPIRED
-        )
+        Subscription.objects.create(user=user, plan=plan, status=Subscription.Status.EXPIRED)
         assert user_has_active_plus(user) is False
 
 
@@ -519,4 +512,5 @@ class TestBillingTasks:
 
     def test_send_renewal_reminders_runs_without_error(self):
         from apps.billing.tasks import send_renewal_reminders
+
         send_renewal_reminders()

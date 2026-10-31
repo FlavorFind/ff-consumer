@@ -119,11 +119,14 @@ class TestSearch:
     @rsps.activate
     def test_search_success(self, client):
         rsps.add(
-            rsps.GET, f"{BASE}/v1/meta/version/",
-            json={"dataset_version": "2026.10.0"}, status=200,
+            rsps.GET,
+            f"{BASE}/v1/meta/version/",
+            json={"dataset_version": "2026.10.0"},
+            status=200,
         )
         rsps.add(
-            rsps.POST, f"{BASE}/v1/search/by-ingredients",
+            rsps.POST,
+            f"{BASE}/v1/search/by-ingredients",
             json={
                 "dataset_version": "2026.10.0",
                 "mode": "strict",
@@ -147,11 +150,14 @@ class TestSearch:
     @rsps.activate
     def test_search_uses_cache(self, client):
         rsps.add(
-            rsps.GET, f"{BASE}/v1/meta/version/",
-            json={"dataset_version": "2026.10.0"}, status=200,
+            rsps.GET,
+            f"{BASE}/v1/meta/version/",
+            json={"dataset_version": "2026.10.0"},
+            status=200,
         )
         rsps.add(
-            rsps.POST, f"{BASE}/v1/search/by-ingredients",
+            rsps.POST,
+            f"{BASE}/v1/search/by-ingredients",
             json={"results": {}, "dataset_version": "2026.10.0"},
             status=200,
         )
@@ -165,11 +171,14 @@ class TestSearch:
     @rsps.activate
     def test_search_engine_down_returns_degraded(self, client):
         rsps.add(
-            rsps.GET, f"{BASE}/v1/meta/version/",
-            json={"dataset_version": "2026.10.0"}, status=200,
+            rsps.GET,
+            f"{BASE}/v1/meta/version/",
+            json={"dataset_version": "2026.10.0"},
+            status=200,
         )
         rsps.add(
-            rsps.POST, f"{BASE}/v1/search/by-ingredients",
+            rsps.POST,
+            f"{BASE}/v1/search/by-ingredients",
             body=ConnectionError("engine down"),
         )
         result = client.search(ingredients=["tomato"], diet=[])
@@ -178,8 +187,10 @@ class TestSearch:
     @rsps.activate
     def test_search_circuit_open_returns_degraded(self, client):
         rsps.add(
-            rsps.GET, f"{BASE}/v1/meta/version/",
-            json={"dataset_version": "2026.10.0"}, status=200,
+            rsps.GET,
+            f"{BASE}/v1/meta/version/",
+            json={"dataset_version": "2026.10.0"},
+            status=200,
         )
         # Open the circuit manually
         for _ in range(5):
@@ -190,11 +201,14 @@ class TestSearch:
     @rsps.activate
     def test_search_with_exclude_and_meal_type(self, client):
         rsps.add(
-            rsps.GET, f"{BASE}/v1/meta/version/",
-            json={"dataset_version": "2026.10.0"}, status=200,
+            rsps.GET,
+            f"{BASE}/v1/meta/version/",
+            json={"dataset_version": "2026.10.0"},
+            status=200,
         )
         rsps.add(
-            rsps.POST, f"{BASE}/v1/search/by-ingredients",
+            rsps.POST,
+            f"{BASE}/v1/search/by-ingredients",
             json={"results": {}, "dataset_version": "2026.10.0"},
             status=200,
         )
@@ -207,6 +221,7 @@ class TestSearch:
         assert "results" in result
         # Verify request body
         import json
+
         sent_body = json.loads(rsps.calls[-1].request.body)
         assert sent_body["exclude"] == ["beef"]
         assert sent_body["meal_type"] == "lunch"
@@ -222,7 +237,8 @@ class TestResolveIngredients:
     @rsps.activate
     def test_resolve_success(self, client):
         rsps.add(
-            rsps.POST, f"{BASE}/v1/ingredients/resolve",
+            rsps.POST,
+            f"{BASE}/v1/ingredients/resolve",
             json={"results": [{"token": "unga", "status": "matched"}]},
             status=200,
         )
@@ -232,7 +248,8 @@ class TestResolveIngredients:
     @rsps.activate
     def test_get_ingredients_autocomplete(self, client):
         rsps.add(
-            rsps.GET, f"{BASE}/v1/ingredients/",
+            rsps.GET,
+            f"{BASE}/v1/ingredients/",
             json={"results": [{"slug": "tomato", "name_en": "Tomato"}]},
             status=200,
         )
@@ -242,7 +259,8 @@ class TestResolveIngredients:
     @rsps.activate
     def test_get_ingredients_uses_cache(self, client):
         rsps.add(
-            rsps.GET, f"{BASE}/v1/ingredients/",
+            rsps.GET,
+            f"{BASE}/v1/ingredients/",
             json={"results": []},
             status=200,
         )
@@ -261,11 +279,14 @@ class TestDishes:
     @rsps.activate
     def test_get_dish(self, client):
         rsps.add(
-            rsps.GET, f"{BASE}/v1/meta/version/",
-            json={"dataset_version": "2026.10.0"}, status=200,
+            rsps.GET,
+            f"{BASE}/v1/meta/version/",
+            json={"dataset_version": "2026.10.0"},
+            status=200,
         )
         rsps.add(
-            rsps.GET, f"{BASE}/v1/dishes/ugali/",
+            rsps.GET,
+            f"{BASE}/v1/dishes/ugali/",
             json={"slug": "ugali", "name_en": "Ugali"},
             status=200,
         )
@@ -275,11 +296,14 @@ class TestDishes:
     @rsps.activate
     def test_get_dish_uses_cache(self, client):
         rsps.add(
-            rsps.GET, f"{BASE}/v1/meta/version/",
-            json={"dataset_version": "2026.10.0"}, status=200,
+            rsps.GET,
+            f"{BASE}/v1/meta/version/",
+            json={"dataset_version": "2026.10.0"},
+            status=200,
         )
         rsps.add(
-            rsps.GET, f"{BASE}/v1/dishes/ugali/",
+            rsps.GET,
+            f"{BASE}/v1/dishes/ugali/",
             json={"slug": "ugali"},
             status=200,
         )
@@ -291,8 +315,10 @@ class TestDishes:
     @rsps.activate
     def test_get_pairings(self, client):
         rsps.add(
-            rsps.GET, f"{BASE}/v1/dishes/ugali/pairings/",
-            json={"pairings": []}, status=200,
+            rsps.GET,
+            f"{BASE}/v1/dishes/ugali/pairings/",
+            json={"pairings": []},
+            status=200,
         )
         result = client.get_pairings("ugali")
         assert "pairings" in result
@@ -300,8 +326,10 @@ class TestDishes:
     @rsps.activate
     def test_get_substitutions(self, client):
         rsps.add(
-            rsps.GET, f"{BASE}/v1/dishes/ugali/substitutions/",
-            json={"substitutions": []}, status=200,
+            rsps.GET,
+            f"{BASE}/v1/dishes/ugali/substitutions/",
+            json={"substitutions": []},
+            status=200,
         )
         result = client.get_substitutions("ugali")
         assert "substitutions" in result
@@ -309,8 +337,10 @@ class TestDishes:
     @rsps.activate
     def test_get_missing(self, client):
         rsps.add(
-            rsps.POST, f"{BASE}/v1/dishes/ugali/missing/",
-            json={"missing": []}, status=200,
+            rsps.POST,
+            f"{BASE}/v1/dishes/ugali/missing/",
+            json={"missing": []},
+            status=200,
         )
         result = client.get_missing("ugali", ["ingredient-uuid-1"])
         assert "missing" in result
@@ -326,7 +356,8 @@ class TestRegions:
     @rsps.activate
     def test_get_regions(self, client):
         rsps.add(
-            rsps.GET, f"{BASE}/v1/regions/",
+            rsps.GET,
+            f"{BASE}/v1/regions/",
             json={"results": [{"slug": "nairobi", "name_en": "Nairobi"}]},
             status=200,
         )
@@ -336,8 +367,10 @@ class TestRegions:
     @rsps.activate
     def test_get_regions_cached(self, client):
         rsps.add(
-            rsps.GET, f"{BASE}/v1/regions/",
-            json={"results": []}, status=200,
+            rsps.GET,
+            f"{BASE}/v1/regions/",
+            json={"results": []},
+            status=200,
         )
         client.get_regions()
         client.get_regions()
@@ -354,7 +387,8 @@ class TestCommunitySubmission:
     @rsps.activate
     def test_submit_community(self, client):
         rsps.add(
-            rsps.POST, f"{BASE}/v1/internal/submissions/",
+            rsps.POST,
+            f"{BASE}/v1/internal/submissions/",
             json={"id": "engine-submission-uuid"},
             status=201,
         )
@@ -374,7 +408,8 @@ class TestDatasetDiff:
     @rsps.activate
     def test_get_dataset_diff(self, client):
         rsps.add(
-            rsps.GET, f"{BASE}/v1/datasets/",
+            rsps.GET,
+            f"{BASE}/v1/datasets/",
             json={"changed": [], "removed": []},
             status=200,
         )
@@ -404,6 +439,7 @@ class TestCircuitBreaker:
         assert client._circuit_state() == "closed"
         # Failure count should be reset
         from django.core.cache import cache as c
+
         assert c.get("ffconsumer:engine:circuit_failures") == 0
 
     @rsps.activate
@@ -429,7 +465,8 @@ class TestCircuitBreaker:
     @rsps.activate
     def test_rate_limit_429_raises_engine_unavailable(self, client):
         rsps.add(
-            rsps.GET, f"{BASE}/v1/health/",
+            rsps.GET,
+            f"{BASE}/v1/health/",
             status=429,
             headers={"Retry-After": "30"},
         )
@@ -472,8 +509,10 @@ class TestEngineClientTasks:
         from apps.engine_client.tasks import check_dataset_drift
 
         rsps.add(
-            rsps.GET, f"{BASE}/v1/meta/version/",
-            json={"dataset_version": "2026.10.0"}, status=200,
+            rsps.GET,
+            f"{BASE}/v1/meta/version/",
+            json={"dataset_version": "2026.10.0"},
+            status=200,
         )
         # Set the same version in cache so no change is detected
         cache.set("ffconsumer:engine:dataset_version", "2026.10.0", timeout=3600)
@@ -485,8 +524,10 @@ class TestEngineClientTasks:
         from apps.engine_client.tasks import check_dataset_drift
 
         rsps.add(
-            rsps.GET, f"{BASE}/v1/meta/version/",
-            json={"dataset_version": "2026.11.0"}, status=200,
+            rsps.GET,
+            f"{BASE}/v1/meta/version/",
+            json={"dataset_version": "2026.11.0"},
+            status=200,
         )
         mock_drift = mocker.patch(
             "apps.core.tasks.check_dataset_drift_saved_recipes.delay",

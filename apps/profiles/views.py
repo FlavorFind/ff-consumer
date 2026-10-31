@@ -27,7 +27,9 @@ class ProfileView(APIView):
         profile = self._get_or_create_profile(request.user)
         return Response(ProfileSerializer(profile).data)
 
-    @extend_schema(request=ProfileSerializer, responses={200: ProfileSerializer}, summary="Update profile")
+    @extend_schema(
+        request=ProfileSerializer, responses={200: ProfileSerializer}, summary="Update profile"
+    )
     def patch(self, request):
         profile = self._get_or_create_profile(request.user)
         serializer = ProfileSerializer(profile, data=request.data, partial=True)
@@ -65,17 +67,14 @@ class ProfileDietView(APIView):
         new_slugs = set(serializer.validated_data["diet_tags"])
 
         # Remove tags no longer in the list
-        ProfileDiet.objects.filter(user=request.user).exclude(
-            diet_tag_slug__in=new_slugs
-        ).delete()
+        ProfileDiet.objects.filter(user=request.user).exclude(diet_tag_slug__in=new_slugs).delete()
 
         # Add new tags
         existing = set(
             ProfileDiet.objects.filter(user=request.user).values_list("diet_tag_slug", flat=True)
         )
         to_create = [
-            ProfileDiet(user=request.user, diet_tag_slug=slug)
-            for slug in new_slugs - existing
+            ProfileDiet(user=request.user, diet_tag_slug=slug) for slug in new_slugs - existing
         ]
         if to_create:
             ProfileDiet.objects.bulk_create(to_create)

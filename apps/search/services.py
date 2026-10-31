@@ -17,8 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Allergen disclaimer required on every response mentioning dietary info
 ALLERGEN_DISCLAIMER = (
-    "Allergen information is for guidance only. "
-    "Always confirm with the kitchen before ordering."
+    "Allergen information is for guidance only. " "Always confirm with the kitchen before ordering."
 )
 
 

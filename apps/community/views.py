@@ -74,9 +74,7 @@ class DishReviewView(APIView):
         summary="List approved reviews for a dish",
     )
     def get(self, request, slug):
-        reviews = Review.objects.filter(
-            dish_slug=slug, status=Review.Status.APPROVED
-        )
+        reviews = Review.objects.filter(dish_slug=slug, status=Review.Status.APPROVED)
         return Response(ReviewSerializer(reviews, many=True).data)
 
     @extend_schema(

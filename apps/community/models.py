@@ -59,7 +59,7 @@ class Review(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="reviews"
     )
-    dish_id = models.CharField(max_length=36, db_index=True)     # engine UUID
+    dish_id = models.CharField(max_length=36, db_index=True)  # engine UUID
     dish_slug = models.CharField(max_length=200)
     stars = models.IntegerField()  # 1–5
     text = models.TextField(blank=True, default="")

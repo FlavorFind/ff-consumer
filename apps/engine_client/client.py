@@ -40,10 +40,10 @@ _INGREDIENT_AC_PREFIX = "ffconsumer:ingredient_ac:"
 _REGIONS_PREFIX = "ffconsumer:regions:"
 
 # Cache TTLs in seconds
-_SEARCH_TTL = 300       # 5 minutes
-_DISH_TTL = 3600        # 1 hour
+_SEARCH_TTL = 300  # 5 minutes
+_DISH_TTL = 3600  # 1 hour
 _INGREDIENT_AC_TTL = 600  # 10 minutes
-_REGIONS_TTL = 86400    # 24 hours
+_REGIONS_TTL = 86400  # 24 hours
 _DATASET_VERSION_TTL = 3600  # 1 hour
 
 
@@ -144,13 +144,9 @@ class EngineClient:
                 if resp.status_code == 429:
                     # Honour Retry-After but don't count as circuit failure
                     retry_after = resp.headers.get("Retry-After", "60")
-                    raise EngineUnavailableError(
-                        f"Engine rate limit. Retry after {retry_after}s."
-                    )
+                    raise EngineUnavailableError(f"Engine rate limit. Retry after {retry_after}s.")
                 if resp.status_code >= 500:
-                    raise requests.RequestException(
-                        f"Engine server error: {resp.status_code}"
-                    )
+                    raise requests.RequestException(f"Engine server error: {resp.status_code}")
                 resp.raise_for_status()
                 self._record_success()
                 return resp.json()

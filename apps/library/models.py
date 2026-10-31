@@ -37,9 +37,9 @@ class SavedRecipe(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="saved_recipes"
     )
-    dish_id = models.CharField(max_length=36, db_index=True)      # engine UUID
-    dish_slug = models.CharField(max_length=200)                   # engine slug
-    dataset_version = models.CharField(max_length=20)              # for drift detection
+    dish_id = models.CharField(max_length=36, db_index=True)  # engine UUID
+    dish_slug = models.CharField(max_length=200)  # engine slug
+    dataset_version = models.CharField(max_length=20)  # for drift detection
     collection = models.ForeignKey(
         Collection, on_delete=models.SET_NULL, null=True, blank=True, related_name="recipes"
     )

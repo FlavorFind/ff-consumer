@@ -35,8 +35,7 @@ class SavedRecipeListView(APIView):
         responses={201: SavedRecipeSerializer},
         summary="Save a recipe",
         description=(
-            "Save a dish from the engine. Free tier: up to 20 saved recipes. "
-            "Plus: unlimited."
+            "Save a dish from the engine. Free tier: up to 20 saved recipes. " "Plus: unlimited."
         ),
     )
     def post(self, request):

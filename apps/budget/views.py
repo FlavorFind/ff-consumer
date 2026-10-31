@@ -47,9 +47,7 @@ class BudgetSuggestView(APIView):
 
         diet = get_user_diet_tags(request.user)
         pantry_slugs = list(
-            PantryItem.objects.filter(user=request.user).values_list(
-                "ingredient_slug", flat=True
-            )
+            PantryItem.objects.filter(user=request.user).values_list("ingredient_slug", flat=True)
         )
 
         # Engine search with cost filter

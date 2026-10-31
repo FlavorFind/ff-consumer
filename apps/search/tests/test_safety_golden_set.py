@@ -118,6 +118,7 @@ def mock_dataset_version():
 # Fixtures
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def user_with_nut_allergy(db):
     from apps.profiles.models import ProfileDiet
@@ -182,6 +183,7 @@ def no_diet_user(db):
 @pytest.fixture
 def auth_client_for(api_client):
     """Factory: return an authenticated APIClient for a given user."""
+
     def _make(user):
         from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -195,6 +197,7 @@ def auth_client_for(api_client):
 # ─────────────────────────────────────────────────────────────────────────────
 # Helper: extract all dish slugs from a search response
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def all_slugs(response_data: dict) -> list[str]:
     slugs = []
@@ -216,13 +219,12 @@ def all_diet_tags(response_data: dict) -> list[str]:
 # Category 1: Allergen exclusion (10 cases)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestAllergenExclusion:
     """An excluded allergen can NEVER appear in search results."""
 
     @responses_lib.activate
-    def test_nut_allergy_sends_nut_free_to_engine(
-        self, auth_client_for, user_with_nut_allergy
-    ):
+    def test_nut_allergy_sends_nut_free_to_engine(self, auth_client_for, user_with_nut_allergy):
         """GOLDEN-ALLERGEN-001: nut-free diet tag must be in the request to the engine."""
         mock_dataset_version()
         mock_engine_search(make_search_response({"exact": [DISH_VEGETARIAN]}))
@@ -235,14 +237,12 @@ class TestAllergenExclusion:
             c for c in responses_lib.calls if "/search/by-ingredients" in c.request.url
         )
         body = json.loads(search_call.request.body)
-        assert "nut-free" in body["diet"], (
-            "SAFETY VIOLATION: nut-free allergen was not sent to the engine"
-        )
+        assert (
+            "nut-free" in body["diet"]
+        ), "SAFETY VIOLATION: nut-free allergen was not sent to the engine"
 
     @responses_lib.activate
-    def test_nut_allergy_none_not_passed_as_diet(
-        self, auth_client_for, user_with_nut_allergy
-    ):
+    def test_nut_allergy_none_not_passed_as_diet(self, auth_client_for, user_with_nut_allergy):
         """GOLDEN-ALLERGEN-002: diet must never be None — that would silently drop exclusions."""
         mock_dataset_version()
         mock_engine_search(make_search_response({"exact": [DISH_VEGETARIAN]}))
@@ -254,9 +254,9 @@ class TestAllergenExclusion:
             c for c in responses_lib.calls if "/search/by-ingredients" in c.request.url
         )
         body = json.loads(search_call.request.body)
-        assert body["diet"] is not None, (
-            "SAFETY VIOLATION: diet was None — allergen exclusions silently dropped"
-        )
+        assert (
+            body["diet"] is not None
+        ), "SAFETY VIOLATION: diet was None — allergen exclusions silently dropped"
 
     @responses_lib.activate
     def test_multiple_allergens_all_sent(self, db, auth_client_for, api_client):
@@ -308,9 +308,7 @@ class TestAllergenExclusion:
         assert "nut-free" in body["diet"]
 
     @responses_lib.activate
-    def test_allergen_sent_in_explore_mode(
-        self, auth_client_for, user_with_nut_allergy
-    ):
+    def test_allergen_sent_in_explore_mode(self, auth_client_for, user_with_nut_allergy):
         """GOLDEN-ALLERGEN-005: allergens sent in explore mode too."""
         mock_dataset_version()
         mock_engine_search(make_search_response({"exact": [], "almost": [DISH_VEGETARIAN]}))
@@ -325,9 +323,7 @@ class TestAllergenExclusion:
         assert "nut-free" in body["diet"]
 
     @responses_lib.activate
-    def test_no_diet_user_sends_empty_list_not_none(
-        self, auth_client_for, no_diet_user
-    ):
+    def test_no_diet_user_sends_empty_list_not_none(self, auth_client_for, no_diet_user):
         """GOLDEN-ALLERGEN-006: user with no restrictions sends [] not None."""
         mock_dataset_version()
         mock_engine_search(make_search_response({"exact": [DISH_VEGETARIAN]}))
@@ -339,14 +335,10 @@ class TestAllergenExclusion:
             c for c in responses_lib.calls if "/search/by-ingredients" in c.request.url
         )
         body = json.loads(search_call.request.body)
-        assert body["diet"] == [], (
-            "User with no restrictions should send [], not None or missing"
-        )
+        assert body["diet"] == [], "User with no restrictions should send [], not None or missing"
 
     @responses_lib.activate
-    def test_search_returns_200_with_allergen_user(
-        self, auth_client_for, user_with_nut_allergy
-    ):
+    def test_search_returns_200_with_allergen_user(self, auth_client_for, user_with_nut_allergy):
         """GOLDEN-ALLERGEN-007: search succeeds for allergen user (not an error)."""
         mock_dataset_version()
         mock_engine_search(make_search_response({"exact": [DISH_VEGETARIAN]}))
@@ -356,23 +348,19 @@ class TestAllergenExclusion:
         assert resp.status_code == 200
 
     @responses_lib.activate
-    def test_allergen_disclaimer_in_response(
-        self, auth_client_for, user_with_nut_allergy
-    ):
+    def test_allergen_disclaimer_in_response(self, auth_client_for, user_with_nut_allergy):
         """GOLDEN-ALLERGEN-008: allergen disclaimer must be in every search response."""
         mock_dataset_version()
         mock_engine_search(make_search_response({"exact": [DISH_VEGETARIAN]}))
 
         client = auth_client_for(user_with_nut_allergy)
         resp = client.post("/v1/search/", {"ingredients": ["tomato"]}, format="json")
-        assert "allergen_disclaimer" in resp.json(), (
-            "SAFETY VIOLATION: allergen_disclaimer missing from search response"
-        )
+        assert (
+            "allergen_disclaimer" in resp.json()
+        ), "SAFETY VIOLATION: allergen_disclaimer missing from search response"
 
     @responses_lib.activate
-    def test_allergen_disclaimer_non_empty(
-        self, auth_client_for, user_with_nut_allergy
-    ):
+    def test_allergen_disclaimer_non_empty(self, auth_client_for, user_with_nut_allergy):
         """GOLDEN-ALLERGEN-009: allergen disclaimer must be a non-empty string."""
         mock_dataset_version()
         mock_engine_search(make_search_response({"exact": [DISH_VEGETARIAN]}))
@@ -383,9 +371,7 @@ class TestAllergenExclusion:
         assert len(disclaimer) > 20, "Allergen disclaimer is suspiciously short"
 
     @responses_lib.activate
-    def test_allergen_disclaimer_for_user_with_no_diet(
-        self, auth_client_for, no_diet_user
-    ):
+    def test_allergen_disclaimer_for_user_with_no_diet(self, auth_client_for, no_diet_user):
         """GOLDEN-ALLERGEN-010: allergen disclaimer on every response, not just allergen users."""
         mock_dataset_version()
         mock_engine_search(make_search_response({"exact": [DISH_VEGETARIAN]}))
@@ -398,6 +384,7 @@ class TestAllergenExclusion:
 # ─────────────────────────────────────────────────────────────────────────────
 # Category 2: Vegetarian safety (5 cases)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestVegetarianSafety:
     """A vegetarian profile must NEVER return meat, fish, or poultry."""
@@ -415,9 +402,7 @@ class TestVegetarianSafety:
             c for c in responses_lib.calls if "/search/by-ingredients" in c.request.url
         )
         body = json.loads(search_call.request.body)
-        assert "vegetarian" in body["diet"], (
-            "SAFETY VIOLATION: vegetarian tag not sent to engine"
-        )
+        assert "vegetarian" in body["diet"], "SAFETY VIOLATION: vegetarian tag not sent to engine"
 
     @responses_lib.activate
     def test_vegetarian_search_returns_200(self, auth_client_for, vegetarian_user):
@@ -430,9 +415,7 @@ class TestVegetarianSafety:
         assert resp.status_code == 200
 
     @responses_lib.activate
-    def test_vegetarian_diet_not_overridden_by_request(
-        self, auth_client_for, vegetarian_user
-    ):
+    def test_vegetarian_diet_not_overridden_by_request(self, auth_client_for, vegetarian_user):
         """GOLDEN-VEG-003: request payload cannot override user's diet restrictions."""
         mock_dataset_version()
         # Engine correctly filters — we're testing the consumer backend sends the tag
@@ -479,6 +462,7 @@ class TestVegetarianSafety:
 # ─────────────────────────────────────────────────────────────────────────────
 # Category 3: Diet tags (5 cases)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestDietTags:
     """Other diet tags (halal, gluten-free, etc.) filter correctly."""
@@ -569,6 +553,7 @@ class TestDietTags:
 # ─────────────────────────────────────────────────────────────────────────────
 # Category 4: Ambiguity (5 cases)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestAmbiguity:
     """Ambiguous tokens must return choices to the user, never a silent guess."""
@@ -676,6 +661,7 @@ class TestAmbiguity:
 # ─────────────────────────────────────────────────────────────────────────────
 # Category 5: Swahili / Sheng input (5 cases)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestSwahiliInput:
     """Local names must resolve correctly through the engine."""
@@ -795,6 +781,7 @@ class TestSwahiliInput:
 # Category 6: Explore mode (5 cases)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestExploreMode:
     """'Almost' results: correctly labelled, not shown in strict mode."""
 
@@ -802,9 +789,7 @@ class TestExploreMode:
     def test_explore_mode_passed_to_engine(self, auth_client_for, no_diet_user):
         """GOLDEN-EXPLORE-001: explore mode parameter passed to engine."""
         mock_dataset_version()
-        mock_engine_search(
-            make_search_response({"exact": [], "almost": []}, mode="explore")
-        )
+        mock_engine_search(make_search_response({"exact": [], "almost": []}, mode="explore"))
 
         client = auth_client_for(no_diet_user)
         client.post("/v1/search/", {"mode": "explore"}, format="json")
@@ -861,14 +846,10 @@ class TestExploreMode:
         assert len(data.get("results", {}).get("almost", [])) == 1
 
     @responses_lib.activate
-    def test_explore_allergen_tags_still_sent(
-        self, auth_client_for, user_with_nut_allergy
-    ):
+    def test_explore_allergen_tags_still_sent(self, auth_client_for, user_with_nut_allergy):
         """GOLDEN-EXPLORE-005: allergen tags sent even in explore mode."""
         mock_dataset_version()
-        mock_engine_search(
-            make_search_response({"exact": [], "almost": []}, mode="explore")
-        )
+        mock_engine_search(make_search_response({"exact": [], "almost": []}, mode="explore"))
 
         client = auth_client_for(user_with_nut_allergy)
         client.post("/v1/search/", {"mode": "explore"}, format="json")
@@ -883,6 +864,7 @@ class TestExploreMode:
 # ─────────────────────────────────────────────────────────────────────────────
 # Category 7: Allergen disclaimer (5 cases)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestAllergenDisclaimer:
     """Allergen disclaimer must appear on every response that mentions dietary info."""
@@ -940,5 +922,7 @@ class TestAllergenDisclaimer:
         mock_engine_search(make_search_response({"exact": [], "can_make": []}))
 
         client = auth_client_for(no_diet_user)
-        resp = client.post("/v1/search/", {"ingredients": ["obscure-ingredient-xyz"]}, format="json")
+        resp = client.post(
+            "/v1/search/", {"ingredients": ["obscure-ingredient-xyz"]}, format="json"
+        )
         assert "allergen_disclaimer" in resp.json()

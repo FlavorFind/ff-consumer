@@ -21,9 +21,9 @@ class PantryItem(models.Model):
         related_name="pantry_items",
     )
     # Engine ingredient reference — not a FK (engine DB is separate)
-    ingredient_id = models.CharField(max_length=36, db_index=True)      # engine UUID
-    ingredient_slug = models.CharField(max_length=200, db_index=True)   # engine slug
-    display_name = models.CharField(max_length=200)                      # cached from engine
+    ingredient_id = models.CharField(max_length=36, db_index=True)  # engine UUID
+    ingredient_slug = models.CharField(max_length=200, db_index=True)  # engine slug
+    display_name = models.CharField(max_length=200)  # cached from engine
     added_at = models.DateTimeField(auto_now_add=True)
     expires_on = models.DateField(null=True, blank=True)
 

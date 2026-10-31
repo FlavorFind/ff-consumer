@@ -72,9 +72,7 @@ class SyncPushView(APIView):
                 applied.append(str(change["change_id"]))
             except Exception as exc:
                 logger.warning("Sync conflict for change %s: %s", change["change_id"], exc)
-                conflicts.append(
-                    {"change_id": str(change["change_id"]), "reason": str(exc)}
-                )
+                conflicts.append({"change_id": str(change["change_id"]), "reason": str(exc)})
 
         # Update last_sync_at on the device
         _update_device_sync(request)
@@ -134,6 +132,7 @@ class SyncPullView(APIView):
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _apply_change(user, change: dict):
     """Apply a single change from the client to the server."""
@@ -214,14 +213,12 @@ def _apply_shopping_item_change(user, entity_id: str, operation: str, payload: d
     from apps.planner.models import ShoppingItem
 
     if operation == "delete":
-        ShoppingItem.objects.filter(
-            id=entity_id, shopping_list__user=user
-        ).delete()
+        ShoppingItem.objects.filter(id=entity_id, shopping_list__user=user).delete()
     elif operation == "update":
         # Only allow checking/unchecking — user wins here
-        ShoppingItem.objects.filter(
-            id=entity_id, shopping_list__user=user
-        ).update(checked=payload.get("checked", False))
+        ShoppingItem.objects.filter(id=entity_id, shopping_list__user=user).update(
+            checked=payload.get("checked", False)
+        )
 
 
 def _collect_changes_since(user, since) -> list[dict]:

@@ -340,9 +340,7 @@ def _build_user_export(user) -> dict:
     try:
         from apps.library.models import CookLog
 
-        cook_log = list(
-            CookLog.objects.filter(user=user).values("dish_id", "cooked_at", "rating")
-        )
+        cook_log = list(CookLog.objects.filter(user=user).values("dish_id", "cooked_at", "rating"))
     except Exception:
         cook_log = []
 
@@ -357,9 +355,7 @@ def _build_user_export(user) -> dict:
                     "day", "meal_type", "dish_id", "dish_slug", "servings", "note"
                 )
             )
-            plans.append(
-                {"week_start": plan.week_start.isoformat(), "entries": entries}
-            )
+            plans.append({"week_start": plan.week_start.isoformat(), "entries": entries})
     except Exception:
         plans = []
 
@@ -368,9 +364,7 @@ def _build_user_export(user) -> dict:
         from apps.community.models import Submission
 
         submissions = list(
-            Submission.objects.filter(user=user).values(
-                "id", "payload", "status", "created_at"
-            )
+            Submission.objects.filter(user=user).values("id", "payload", "status", "created_at")
         )
     except Exception:
         submissions = []
@@ -381,9 +375,7 @@ def _build_user_export(user) -> dict:
     )
 
     # Devices (no push tokens — those are operational, not personal data)
-    devices = list(
-        Device.objects.filter(user=user).values("platform", "last_seen", "created_at")
-    )
+    devices = list(Device.objects.filter(user=user).values("platform", "last_seen", "created_at"))
 
     return {
         "user": {

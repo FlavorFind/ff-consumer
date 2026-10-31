@@ -48,7 +48,7 @@ class MealPlanEntry(models.Model):
     plan = models.ForeignKey(MealPlan, on_delete=models.CASCADE, related_name="entries")
     day = models.CharField(max_length=3, choices=Day.choices)
     meal_type = models.CharField(max_length=10, choices=MealType.choices)
-    dish_id = models.CharField(max_length=36)    # engine UUID
+    dish_id = models.CharField(max_length=36)  # engine UUID
     dish_slug = models.CharField(max_length=200)
     servings = models.PositiveIntegerField(default=1)
     note = models.TextField(blank=True, default="")
@@ -86,18 +86,14 @@ class ShoppingItem(models.Model):
     """One item on a shopping list."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    shopping_list = models.ForeignKey(
-        ShoppingList, on_delete=models.CASCADE, related_name="items"
-    )
+    shopping_list = models.ForeignKey(ShoppingList, on_delete=models.CASCADE, related_name="items")
     ingredient_id = models.CharField(max_length=36)
     ingredient_slug = models.CharField(max_length=200)
     display_name = models.CharField(max_length=200)
     quantity_note = models.CharField(max_length=200, blank=True, default="")
     checked = models.BooleanField(default=False)
     # Price estimate from engine cost data — always labelled as estimate
-    price_estimate_kes = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True
-    )
+    price_estimate_kes = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     position = models.PositiveIntegerField(default=0)
 
     class Meta:

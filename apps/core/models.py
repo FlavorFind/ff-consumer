@@ -43,9 +43,7 @@ class AuditEvent(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     actor_id = models.UUIDField(null=True, blank=True, db_index=True)
-    actor_type = models.CharField(
-        max_length=10, choices=ActorType.choices, default=ActorType.USER
-    )
+    actor_type = models.CharField(max_length=10, choices=ActorType.choices, default=ActorType.USER)
     action = models.CharField(
         max_length=100,
         db_index=True,

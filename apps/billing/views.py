@@ -224,9 +224,7 @@ class PaystackWebhookView(APIView):
         signature = request.META.get("HTTP_X_PAYSTACK_SIGNATURE", "")
 
         if not _verify_paystack_signature(raw_body, signature):
-            logger.warning(
-                "Paystack webhook: invalid signature. Ignoring event."
-            )
+            logger.warning("Paystack webhook: invalid signature. Ignoring event.")
             return
 
         body = request.data
@@ -289,6 +287,7 @@ class PaystackWebhookView(APIView):
         subscription = payment.subscription
         subscription.status = Subscription.Status.ACTIVE
         from datetime import timedelta
+
         subscription.renews_at = timezone.now() + timedelta(days=30)
         subscription.save(update_fields=["status", "renews_at", "updated_at"])
 

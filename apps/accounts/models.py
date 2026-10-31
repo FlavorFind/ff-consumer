@@ -56,7 +56,9 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     # Format: E.164 (e.g. +254712345678)
     phone = models.CharField(max_length=20, unique=True, null=True, blank=True, db_index=True)
     language = models.CharField(max_length=2, choices=Language.choices, default=Language.EN)
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE, db_index=True)
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.ACTIVE, db_index=True
+    )
     is_staff = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)

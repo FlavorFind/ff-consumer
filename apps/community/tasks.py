@@ -41,9 +41,7 @@ def forward_submission_to_engine(submission_id: str):
         submission.engine_submission_id = engine_id
         submission.status = Submission.Status.SENT
         submission.save(update_fields=["engine_submission_id", "status", "updated_at"])
-        logger.info(
-            "Submission %s forwarded to engine as %s.", submission_id, engine_id
-        )
+        logger.info("Submission %s forwarded to engine as %s.", submission_id, engine_id)
     except Exception as exc:
         logger.error("Failed to forward submission %s: %s", submission_id, exc)
         raise

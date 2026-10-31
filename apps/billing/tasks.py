@@ -52,7 +52,5 @@ def send_renewal_reminders():
     ).select_related("user")
 
     for sub in upcoming:
-        logger.info(
-            "Renewal reminder for user %s — renews at %s", sub.user_id, sub.renews_at
-        )
+        logger.info("Renewal reminder for user %s — renews at %s", sub.user_id, sub.renews_at)
         # TODO: trigger push notification / email via notifications app

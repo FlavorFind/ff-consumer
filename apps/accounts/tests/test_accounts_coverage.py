@@ -376,7 +376,5 @@ class TestOTPEndpoints:
 
     def test_logout_invalid_refresh_token(self, auth_client):
         # Already-invalid token should still return 204 (silently ignored)
-        response = auth_client.post(
-            "/v1/auth/logout", {"refresh": "invalidtoken"}, format="json"
-        )
+        response = auth_client.post("/v1/auth/logout", {"refresh": "invalidtoken"}, format="json")
         assert response.status_code == 204

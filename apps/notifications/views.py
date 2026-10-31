@@ -50,13 +50,10 @@ class NotificationListView(APIView):
         description="Returns the most recent 50 in-app notifications for the authenticated user.",
     )
     def get(self, request):
-        notifications = (
-            Notification.objects.filter(
-                user=request.user,
-                channel=Notification.Channel.IN_APP,
-            )
-            .order_by("-created_at")[:50]
-        )
+        notifications = Notification.objects.filter(
+            user=request.user,
+            channel=Notification.Channel.IN_APP,
+        ).order_by("-created_at")[:50]
         return Response(NotificationSerializer(notifications, many=True).data)
 
 
@@ -74,9 +71,7 @@ class NotificationMarkReadView(APIView):
         from django.utils import timezone
 
         try:
-            notification = Notification.objects.get(
-                id=notification_id, user=request.user
-            )
+            notification = Notification.objects.get(id=notification_id, user=request.user)
         except Notification.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
 

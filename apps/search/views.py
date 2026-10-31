@@ -43,8 +43,7 @@ class SearchView(APIView):
             "Search for recipes using your pantry and dietary preferences. "
             "Your pantry is injected automatically. "
             "Diet tags and allergen exclusions from your profile are ALWAYS applied. "
-            "\n\n**Allergen disclaimer:** "
-            + ALLERGEN_DISCLAIMER
+            "\n\n**Allergen disclaimer:** " + ALLERGEN_DISCLAIMER
         ),
     )
     def post(self, request):

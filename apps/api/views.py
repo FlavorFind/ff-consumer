@@ -60,6 +60,7 @@ class MetaVersionView(APIView):
             engine_status = "degraded"
             # Read the cached dataset version without making another network call
             from django.core.cache import cache
+
             dataset_version = cache.get("ffconsumer:engine:dataset_version", "unknown")
 
         return Response(

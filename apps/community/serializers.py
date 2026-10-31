@@ -20,7 +20,14 @@ class SubmissionSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "status", "engine_submission_id", "reason", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "status",
+            "engine_submission_id",
+            "reason",
+            "created_at",
+            "updated_at",
+        ]
 
 
 class CreateSubmissionSerializer(serializers.Serializer):
@@ -29,20 +36,18 @@ class CreateSubmissionSerializer(serializers.Serializer):
     name_en = serializers.CharField(max_length=300)
     name_sw = serializers.CharField(max_length=300, required=False, allow_blank=True, default="")
     description = serializers.CharField()
-    # List of ingredient objects: {name: str, quantity: str}
-    ingredients = serializers.ListField(
-        child=serializers.DictField(), min_length=1, max_length=50
-    )
+    # Accepts a list of strings ("ugali flour") or dicts ({name: str, quantity: str})
+    ingredients = serializers.ListField(child=serializers.JSONField(), min_length=1, max_length=50)
     # List of step strings
-    steps = serializers.ListField(
-        child=serializers.CharField(), min_length=1, max_length=30
-    )
+    steps = serializers.ListField(child=serializers.CharField(), min_length=1, max_length=30)
     meal_type = serializers.ChoiceField(
         choices=["breakfast", "lunch", "dinner", "snack", "dessert", "drink", "any"],
         required=False,
         default="any",
     )
-    region_slug = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
+    region_slug = serializers.CharField(
+        max_length=100, required=False, allow_blank=True, default=""
+    )
     notes = serializers.CharField(required=False, allow_blank=True, default="")
 
 

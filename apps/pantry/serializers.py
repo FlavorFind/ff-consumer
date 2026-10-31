@@ -32,6 +32,7 @@ class AddPantryItemSerializer(serializers.Serializer):
     def validate_ingredient_id(self, value):
         # Basic UUID format check — engine IDs are UUIDs
         import re
+
         uuid_pattern = re.compile(
             r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
             re.IGNORECASE,
