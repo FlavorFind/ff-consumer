@@ -28,7 +28,7 @@ django-two-factor-auth==1.18.1
 qrcode==8.2
 
 # HTTP client (engine API calls)
-requests==2.32.3
+requests==2.33.0
 
 # Utilities
 Pillow==13.0.0
