@@ -2,12 +2,14 @@
 
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from django_otp.admin import OTPAdminSite
+from two_factor.admin import AdminSiteOTPRequired
 
 from apps.accounts.models import AuthIdentity, Consent, CustomUser, Device, EmailVerification
 
-# Replace the default admin site with the OTP-protected version
-admin.site.__class__ = OTPAdminSite
+# Use AdminSiteOTPRequired (from django-two-factor-auth, same as engine).
+# This redirects users without a TOTP device to the setup page on first login,
+# rather than silently blocking them like OTPAdminSite does.
+admin.site.__class__ = AdminSiteOTPRequired
 
 
 @admin.register(CustomUser)
