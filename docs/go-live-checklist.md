@@ -120,17 +120,17 @@ Mark each item ✅ before tagging v1.0.0. Any ❌ blocks the release.
 
 ---
 
-## Outstanding items at time of checklist creation (2026-10-31)
+## Outstanding items — updated 2026-11-01
 
 | Item | Status | Notes |
 |---|---|---|
-| Load test p95 < 250ms | ✅ Done | p95 = 39.9ms measured on server |
-| Soak test 2-hour | ⬜ Pending | Run `./loadtests/run.sh soak` on server |
-| Rollback drill | ⬜ Pending | See `docs/runbooks/rollback.md` |
-| Backup restore drill | ⬜ Pending | See `docs/runbooks/backup-restore.md` |
-| Incident tabletop | ⬜ Pending | 2 scenarios — engine outage + payment failure |
-| Pen test / ZAP scan | ⬜ Pending | Nightly DAST job now in CI |
-| Staff 2FA verified | ⬜ Pending | Check all staff accounts in admin |
-| Threat model doc | ⬜ Pending | `docs/threat-model.md` not yet written |
+| Load test p95 < 250ms | ✅ Done | p95 = 39.9ms at 50 req/s |
+| Soak test 2-hour | ✅ Done | search p95 = 18ms, 5xx rate = 0.23%, 143,921 iterations, 0 interrupted |
+| Rollback drill | ✅ Done | 6s time-to-recovery — `docs/drills/rollback-2026-10-31.md` |
+| Backup restore drill | ✅ Done | 1s restore, row counts verified — `docs/drills/backup-restore-2026-10-31.md` |
+| Incident tabletop | ✅ Done | Both scenarios — `docs/drills/incident-tabletop-2026-10-31.md` |
+| Threat model doc | ✅ Done | 20 threats, 3 open items — `docs/threat-model.md` |
+| Staff 2FA verified | ✅ Done | consumer-admin + consumer-staff enrolled 2026-11-01 |
+| Pen test / ZAP scan | ⬜ Pending | Nightly DAST job in CI — schedule external pen test within 30 days of launch |
 | Taste of 47 Counties stories | ⬜ Pending | Content team — 5 counties minimum |
 | App team integration | ⬜ Pending | Hand off `docs/openapi.yaml` |
