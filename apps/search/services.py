@@ -43,6 +43,7 @@ def search(
 
     - Injects pantry items into the ingredient list
     - ALWAYS injects diet tags from the user's profile
+    - Engine client caches responses in Redis keyed by sha256(inputs+diet+dataset_version)
     - Applies a personalisation boost by region
 
     Returns the engine response augmented with:
@@ -62,7 +63,7 @@ def search(
     # Merge pantry with explicit ingredients, deduplicating
     all_ingredients = list(dict.fromkeys(ingredients + pantry_slugs))
 
-    # 3. Call the engine
+    # 3. Call the engine (engine client handles Redis caching internally)
     result = engine.search(
         ingredients=all_ingredients,
         diet=diet,
