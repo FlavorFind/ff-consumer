@@ -221,10 +221,14 @@ class EngineClient:
         Always returns the full resolve response including ambiguous tokens.
         The caller must check for ambiguous tokens and surface choices to the
         user — never pass an ambiguous token straight to search().
+
+        Note: engine expects field name "ingredients", not "tokens".
+        The lang parameter is kept in the signature for API compatibility
+        but the engine v1 does not use it.
         """
         return self._post(
-            "/v1/ingredients/resolve/",
-            {"tokens": tokens, "lang": lang},
+            "/v1/ingredients/resolve",
+            {"ingredients": tokens},
         )
 
     def get_ingredients(self, q: str, lang: str = "en") -> dict:

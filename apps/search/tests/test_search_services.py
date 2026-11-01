@@ -179,7 +179,7 @@ class TestResolveService:
 
         rsps.add(
             rsps.POST,
-            f"{ENGINE}/v1/ingredients/resolve/",
+            f"{ENGINE}/v1/ingredients/resolve",
             json={"results": [{"token": "unga", "status": "matched"}]},
             status=200,
         )

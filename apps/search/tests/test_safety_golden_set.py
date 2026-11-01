@@ -99,7 +99,7 @@ def mock_engine_search(response_body: dict, status: int = 200):
 def mock_engine_resolve(response_body: dict):
     responses_lib.add(
         responses_lib.POST,
-        f"{ENGINE}/v1/ingredients/resolve/",
+        f"{ENGINE}/v1/ingredients/resolve",
         json=response_body,
         status=200,
     )
@@ -727,7 +727,7 @@ class TestSwahiliInput:
 
     @responses_lib.activate
     def test_swahili_lang_param_passed(self, auth_client, db):
-        """GOLDEN-SW-003: lang=sw is passed to the engine."""
+        """GOLDEN-SW-003: lang=sw is accepted by the consumer and tokens are forwarded to engine."""
         mock_dataset_version()
         mock_engine_resolve({"resolved": [], "ambiguous": [], "unmatched": []})
 
@@ -737,7 +737,8 @@ class TestSwahiliInput:
             c for c in responses_lib.calls if "/ingredients/resolve" in c.request.url
         )
         body = json.loads(resolve_call.request.body)
-        assert body.get("lang") == "sw"
+        # Engine v1 does not accept lang on resolve — tokens are sent as "ingredients"
+        assert "nyanya" in body.get("ingredients", [])
 
     @responses_lib.activate
     def test_chapati_resolves(self, auth_client, db):
@@ -779,9 +780,10 @@ class TestSwahiliInput:
             c for c in responses_lib.calls if "/ingredients/resolve" in c.request.url
         )
         body = json.loads(resolve_call.request.body)
-        assert "nyanya" in body["tokens"]
-        assert "onion" in body["tokens"]
-        assert "sukuma" in body["tokens"]
+        # Engine v1 uses "ingredients" field name, not "tokens"
+        assert "nyanya" in body.get("ingredients", [])
+        assert "onion" in body.get("ingredients", [])
+        assert "sukuma" in body.get("ingredients", [])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
