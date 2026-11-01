@@ -223,7 +223,7 @@ class EngineClient:
         user — never pass an ambiguous token straight to search().
         """
         return self._post(
-            "/v1/ingredients/resolve",
+            "/v1/ingredients/resolve/",
             {"tokens": tokens, "lang": lang},
         )
 

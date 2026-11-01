@@ -52,6 +52,6 @@ class LogCookSerializer(serializers.Serializer):
     """Input for logging a cooked dish."""
 
     dish_id = serializers.CharField(max_length=36)
-    dish_slug = serializers.CharField(max_length=200)
+    dish_slug = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
     rating = serializers.IntegerField(min_value=1, max_value=5, required=False, allow_null=True)
     note = serializers.CharField(required=False, allow_blank=True, default="")

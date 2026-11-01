@@ -238,7 +238,7 @@ class TestResolveIngredients:
     def test_resolve_success(self, client):
         rsps.add(
             rsps.POST,
-            f"{BASE}/v1/ingredients/resolve",
+            f"{BASE}/v1/ingredients/resolve/",
             json={"results": [{"token": "unga", "status": "matched"}]},
             status=200,
         )

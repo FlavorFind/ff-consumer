@@ -62,7 +62,7 @@ class CookLog(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="cook_logs"
     )
     dish_id = models.CharField(max_length=36, db_index=True)
-    dish_slug = models.CharField(max_length=200)
+    dish_slug = models.CharField(max_length=200, blank=True, default="")
     cooked_at = models.DateTimeField(auto_now_add=True)
     rating = models.IntegerField(null=True, blank=True)  # 1–5
     note = models.TextField(blank=True, default="")

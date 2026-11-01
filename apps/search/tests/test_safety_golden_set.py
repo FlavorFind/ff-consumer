@@ -99,7 +99,7 @@ def mock_engine_search(response_body: dict, status: int = 200):
 def mock_engine_resolve(response_body: dict):
     responses_lib.add(
         responses_lib.POST,
-        f"{ENGINE}/v1/ingredients/resolve",
+        f"{ENGINE}/v1/ingredients/resolve/",
         json=response_body,
         status=200,
     )

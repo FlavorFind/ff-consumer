@@ -3,11 +3,13 @@
 import logging
 
 from drf_spectacular.utils import extend_schema
+from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 
+from apps.engine_client.client import EngineUnavailableError
 from apps.search.serializers import (
     IngredientQuerySerializer,
     ResolveRequestSerializer,
@@ -88,10 +90,21 @@ class ResolveView(APIView):
         ser = ResolveRequestSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
 
-        result = resolve(
-            tokens=ser.validated_data["tokens"],
-            lang=ser.validated_data["lang"],
-        )
+        try:
+            result = resolve(
+                tokens=ser.validated_data["tokens"],
+                lang=ser.validated_data["lang"],
+            )
+        except EngineUnavailableError:
+            return Response(
+                {
+                    "engine_status": "degraded",
+                    "results": [],
+                    "ambiguous": [],
+                    "unmatched": ser.validated_data["tokens"],
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         return Response(result)
 
 

@@ -216,7 +216,7 @@ class CookLogListView(APIView):
         log = CookLog.objects.create(
             user=request.user,
             dish_id=ser.validated_data["dish_id"],
-            dish_slug=ser.validated_data["dish_slug"],
+            dish_slug=ser.validated_data.get("dish_slug", ""),
             rating=ser.validated_data.get("rating"),
             note=ser.validated_data.get("note", ""),
         )
