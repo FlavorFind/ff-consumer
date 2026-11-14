@@ -48,19 +48,23 @@ urlpatterns = [
     path("", home, name="home"),
     # Two-factor auth login for staff
     path("", include(tf_urls, namespace="two_factor")),
-    # Django admin — 2FA mandatory
-    path("admin/", admin.site.urls),
     # API v1
     path("v1/", include("apps.api.urls")),
+    # Admin API — secured by service token, not URL-level guard
+    path("v1/admin/", include("apps.admin_api.urls")),
     # OpenAPI schema and docs
     path("v1/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
 ]
 
-# Debug toolbar in dev
-from django.conf import settings  # noqa: E402
+# Django admin — disabled in production via ADMIN_ENABLED env var
+from django.conf import settings as _settings  # noqa: E402
 
-if settings.DEBUG:
+if _settings.ADMIN_ENABLED:
+    urlpatterns += [path("admin/", admin.site.urls)]
+
+# Debug toolbar in dev
+if _settings.DEBUG:
     try:
         import debug_toolbar
 

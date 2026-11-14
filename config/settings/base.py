@@ -4,6 +4,7 @@ Never import this directly — import dev, test or prod instead.
 """
 
 from pathlib import Path
+from typing import Any
 
 import environ
 from celery.schedules import crontab
@@ -71,7 +72,12 @@ LOCAL_APPS = [
     "apps.partners",
     "apps.moderation",
     "apps.api",
+    "apps.admin_api",
 ]
+
+ADMIN_ENABLED = env.bool("ADMIN_ENABLED", default=True)
+ADMIN_API_ENABLED = env.bool("ADMIN_API_ENABLED", default=True)
+ADMIN_API_SERVICE_TOKEN = env("ADMIN_API_SERVICE_TOKEN", default="")
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
@@ -204,7 +210,6 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon": env("THROTTLE_ANON", default="60/minute"),
         "user": env("THROTTLE_USER", default="300/minute"),
-        "otp": env("THROTTLE_OTP", default="5/minute"),
     },
 }
 
@@ -327,7 +332,7 @@ CSRF_COOKIE_HTTPONLY = True
 # ---------------------------------------------------------------------------
 # Logging — structured JSON logs with request IDs
 # ---------------------------------------------------------------------------
-LOGGING = {
+LOGGING: dict[str, Any] = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
