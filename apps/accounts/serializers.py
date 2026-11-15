@@ -78,9 +78,10 @@ class RegisterSerializer(serializers.Serializer):
 
 
 class EmailVerifySerializer(serializers.Serializer):
-    """Verify an email address using the token from the verification email."""
+    """Verify an email address using the OTP from the verification email."""
 
-    token = serializers.CharField()
+    email = serializers.EmailField()
+    otp = serializers.CharField(min_length=6, max_length=6)
 
 
 class ResendVerificationSerializer(serializers.Serializer):

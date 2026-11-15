@@ -22,7 +22,7 @@ from apps.accounts.serializers import (
 from apps.accounts.services import (
     get_tokens_for_user,
     send_verification_email,
-    verify_email_token,
+    verify_email_otp,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ class RegisterView(APIView):
 
 
 class EmailVerifyView(APIView):
-    """POST /v1/auth/verify-email/ — verify email with token from the email link."""
+    """POST /v1/auth/verify-email/ — verify email with 6-digit OTP."""
 
     permission_classes = [AllowAny]
 
@@ -77,13 +77,16 @@ class EmailVerifyView(APIView):
         request=EmailVerifySerializer,
         responses={200: UserSerializer},
         summary="Verify email address",
-        description="Submit the token from the verification email to confirm the email address.",
+        description="Submit the email and 6-digit OTP from the verification email.",
     )
     def post(self, request):
         ser = EmailVerifySerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         try:
-            user = verify_email_token(ser.validated_data["token"])
+            user = verify_email_otp(
+                email=ser.validated_data["email"],
+                otp=ser.validated_data["otp"],
+            )
         except ValueError as exc:
             return Response(
                 {"error": {"code": "invalid_token", "message": str(exc)}},
@@ -110,7 +113,7 @@ class ResendVerificationView(APIView):
         except User.DoesNotExist:
             # Don't reveal whether the email exists
             return Response(
-                {"detail": "If that email is registered, a verification link has been sent."}
+                {"detail": "If that email is registered, a verification code has been sent."}
             )
 
         if user.email_verified:
@@ -122,7 +125,7 @@ class ResendVerificationView(APIView):
             logger.error("Failed to resend verification email to %s: %s", user.email, exc)
 
         return Response(
-            {"detail": "If that email is registered, a verification link has been sent."}
+            {"detail": "If that email is registered, a verification code has been sent."}
         )
 
 
