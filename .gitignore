@@ -57,3 +57,6 @@ test.db
 
 # Load test results (JSON output from k6)
 loadtests/results/
+
+# Hypothesis test cache
+.hypothesis/
