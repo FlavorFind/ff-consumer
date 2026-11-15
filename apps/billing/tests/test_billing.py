@@ -174,6 +174,30 @@ class TestSubscribeEndpoint:
         auth_client.post("/v1/subscribe/", {"plan_code": "plus"}, format="json")
         assert Payment.objects.filter(status=Payment.Status.PENDING, provider="paystack").exists()
 
+    def test_subscribe_does_not_grant_plus_before_webhook(self, auth_client, user, plus_plan):
+        """C1 regression: initialising checkout must not activate Plus."""
+        from apps.billing.entitlements import user_has_active_plus
+        from apps.billing.models import Subscription
+
+        response = auth_client.post("/v1/subscribe/", {"plan_code": "plus"}, format="json")
+        assert response.status_code == 200
+
+        sub = Subscription.objects.get(user=user)
+        assert sub.status == Subscription.Status.PENDING
+        assert user_has_active_plus(user) is False
+        assert auth_client.get("/v1/plans/2026-W44/").status_code == 403
+
+    def test_subscribe_does_not_downgrade_active_plus(self, plus_client, plus_user):
+        """Re-subscribing an active Plus user must not revoke access while paying."""
+        from apps.billing.models import Subscription
+
+        response = plus_client.post("/v1/subscribe/", {"plan_code": "plus"}, format="json")
+        assert response.status_code == 200
+
+        plus_user.subscription.refresh_from_db()
+        assert plus_user.subscription.status == Subscription.Status.ACTIVE
+        assert plus_client.get("/v1/plans/2026-W44/").status_code == 200
+
 
 # ---------------------------------------------------------------------------
 # Paystack webhook
@@ -215,6 +239,43 @@ class TestPaystackWebhook:
         payment.refresh_from_db()
         assert payment.status == Payment.Status.CONFIRMED
         assert payment.receipt_no == "12345678"
+
+    def test_webhook_activates_plus_from_pending(self, api_client, plus_plan, user):
+        """C1: the verified webhook is the only path from PENDING to active Plus."""
+        from django.test import override_settings
+
+        from apps.billing.entitlements import user_has_active_plus
+        from apps.billing.models import Payment, Subscription
+
+        sub = Subscription.objects.create(
+            user=user, plan=plus_plan, status=Subscription.Status.PENDING
+        )
+        Payment.objects.create(
+            user=user,
+            subscription=sub,
+            provider="paystack",
+            provider_ref="pay-uuid-pending",
+            amount_kes=199,
+            status=Payment.Status.PENDING,
+        )
+        assert user_has_active_plus(user) is False
+
+        body = _webhook_body(reference="pay-uuid-pending", amount_kobo=19900)
+        sig = _paystack_signature(body, secret="test_secret_key")
+
+        with override_settings(PAYSTACK_SECRET_KEY="test_secret_key"):
+            response = api_client.post(
+                "/v1/paystack/webhook/",
+                data=body,
+                content_type="application/json",
+                HTTP_X_PAYSTACK_SIGNATURE=sig,
+            )
+
+        assert response.status_code == 200
+        sub.refresh_from_db()
+        assert sub.status == Subscription.Status.ACTIVE
+        assert sub.renews_at is not None
+        assert user_has_active_plus(user) is True
 
     def test_webhook_invalid_signature_ignored(self, api_client, plus_plan, user):
         """Webhook with invalid signature is ignored — no payment confirmed."""
@@ -289,7 +350,7 @@ class TestPaystackWebhook:
         from apps.billing.models import Payment, Subscription
 
         sub = Subscription.objects.create(
-            user=user, plan=plus_plan, status=Subscription.Status.ACTIVE
+            user=user, plan=plus_plan, status=Subscription.Status.PENDING
         )
         payment = Payment.objects.create(
             user=user,
@@ -314,7 +375,9 @@ class TestPaystackWebhook:
 
         assert response.status_code == 200
         payment.refresh_from_db()
+        sub.refresh_from_db()
         assert payment.status == Payment.Status.PENDING  # not confirmed
+        assert sub.is_active_plus() is False
 
     def test_webhook_unknown_reference_handled_gracefully(self, api_client):
         """Webhook for unknown reference doesn't crash."""
@@ -516,3 +579,17 @@ class TestBillingTasks:
         from apps.billing.tasks import send_renewal_reminders
 
         send_renewal_reminders()
+
+
+@pytest.mark.django_db
+class TestCancelSubscription:
+    def test_cancel_sets_status_cancelled(self, plus_client):
+        response = plus_client.post("/v1/subscription/cancel/")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "cancelled"
+        assert data["plan_code"] == "plus"
+
+    def test_cancel_requires_auth(self, api_client):
+        response = api_client.post("/v1/subscription/cancel/")
+        assert response.status_code == 401

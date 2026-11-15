@@ -1,0 +1,43 @@
+{
+  "dish_id": "22222222-2222-4222-8222-222222222222",
+  "slug": "githeri",
+  "name_en": "Githeri",
+  "name_sw": "Githeri",
+  "description": "Maize and beans stew.",
+  "meal_type": "lunch",
+  "course": "main",
+  "spice_level": "none",
+  "difficulty": "easy",
+  "prep_min": 10,
+  "cook_min": 45,
+  "servings": 4,
+  "popularity": 0.6,
+  "quality_level": "verified",
+  "status": "verified",
+  "ingredients": [
+    {
+      "slug": "dried-maize",
+      "name_en": "Dried maize",
+      "name_sw": "Mahindi yaliyokaushwa",
+      "role": "primary",
+      "quantity": "200",
+      "unit": "g",
+      "preparation_note": null
+    }
+  ],
+  "steps": [
+    {
+      "position": 1,
+      "text_en": "Soak the maize overnight.",
+      "text_sw": "Loweka mahindi usiku kucha."
+    }
+  ],
+  "regions": ["coast", "kisumu"],
+  "dietary_tags": [
+    {
+      "slug": "vegetarian",
+      "name": "Vegetarian",
+      "source": "derived"
+    }
+  ]
+}

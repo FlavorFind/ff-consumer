@@ -210,15 +210,27 @@ def _apply_cook_log_change(user, entity_id: str, operation: str, payload: dict):
 
 
 def _apply_shopping_item_change(user, entity_id: str, operation: str, payload: dict):
-    from apps.planner.models import ShoppingItem
+    from apps.planner.models import ShoppingItem, ShoppingList
 
     if operation == "delete":
         ShoppingItem.objects.filter(id=entity_id, shopping_list__user=user).delete()
-    elif operation == "update":
-        # Only allow checking/unchecking — user wins here
-        ShoppingItem.objects.filter(id=entity_id, shopping_list__user=user).update(
-            checked=payload.get("checked", False)
+        return
+    if operation == "create":
+        shopping_list = ShoppingList.objects.get(id=payload["shopping_list"], user=user)
+        ShoppingItem.objects.create(
+            shopping_list=shopping_list,
+            ingredient_id=payload.get("ingredient_id") or "",
+            ingredient_slug=payload.get("ingredient_slug") or "",
+            display_name=payload.get("display_name") or "",
+            quantity_note=payload.get("quantity_note") or "",
+            checked=payload.get("checked", False),
+            position=payload.get("position", 0),
         )
+        return
+    # update: check/uncheck — user wins here
+    ShoppingItem.objects.filter(id=entity_id, shopping_list__user=user).update(
+        checked=payload.get("checked", False),
+    )
 
 
 def _collect_changes_since(user, since) -> list[dict]:

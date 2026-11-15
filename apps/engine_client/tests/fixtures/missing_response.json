@@ -1,0 +1,16 @@
+{
+  "dish_id": "22222222-2222-4222-8222-222222222222",
+  "dish_slug": "githeri",
+  "missing": [
+    {
+      "ingredient_id": "44444444-4444-4444-8444-444444444444",
+      "ingredient_slug": "dried-maize",
+      "ingredient_name": "Dried maize",
+      "role": "primary",
+      "substitutes": []
+    }
+  ],
+  "has_missing": true,
+  "can_make": false,
+  "cost_estimate_kes": null
+}

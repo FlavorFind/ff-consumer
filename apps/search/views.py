@@ -6,16 +6,25 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import UserRateThrottle
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 from rest_framework.views import APIView
 
+from apps.billing.entitlements import user_has_active_plus
 from apps.engine_client.client import EngineUnavailableError
 from apps.search.serializers import (
     IngredientQuerySerializer,
     ResolveRequestSerializer,
     SearchRequestSerializer,
 )
-from apps.search.services import ALLERGEN_DISCLAIMER, get_dish, get_ingredients, resolve, search
+from apps.search.services import (
+    ALLERGEN_DISCLAIMER,
+    ANONYMOUS_RESULT_LIMIT,
+    FREE_RESULT_LIMIT,
+    get_dish,
+    get_ingredients,
+    resolve,
+    search,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,14 +37,22 @@ class SearchView(APIView):
     - The user's diet tags and allergen exclusions (ALWAYS, non-negotiable)
 
     Returns tiered results: exact, can_make, almost (explore mode only).
+
+    Public endpoint: unauthenticated callers get a restricted result set,
+    authenticated free users the standard cap, Plus subscribers the maximum.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     class SearchThrottle(UserRateThrottle):
         scope = "user"
 
     throttle_classes = [SearchThrottle]
+
+    def get_throttles(self):
+        if self.request.user and self.request.user.is_authenticated:
+            return [self.SearchThrottle()]
+        return [AnonRateThrottle()]
 
     @extend_schema(
         request=SearchRequestSerializer,
@@ -52,13 +69,19 @@ class SearchView(APIView):
         ser = SearchRequestSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
 
+        limit = ser.validated_data["limit"]
+        if not request.user.is_authenticated:
+            limit = min(limit, ANONYMOUS_RESULT_LIMIT)
+        elif not user_has_active_plus(request.user):
+            limit = min(limit, FREE_RESULT_LIMIT)
+
         result = search(
             user=request.user,
             ingredients=ser.validated_data["ingredients"],
             mode=ser.validated_data["mode"],
             exclude=ser.validated_data["exclude"],
             lang=ser.validated_data["lang"],
-            limit=ser.validated_data["limit"],
+            limit=limit,
             meal_type=ser.validated_data["meal_type"],
         )
 
@@ -126,10 +149,16 @@ class IngredientsView(APIView):
         ser = IngredientQuerySerializer(data=request.query_params)
         ser.is_valid(raise_exception=True)
 
-        result = get_ingredients(
-            q=ser.validated_data["q"],
-            lang=ser.validated_data["lang"],
-        )
+        try:
+            result = get_ingredients(
+                q=ser.validated_data["q"],
+                lang=ser.validated_data["lang"],
+            )
+        except EngineUnavailableError:
+            return Response(
+                {"engine_status": "degraded", "results": []},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         return Response(result)
 
 
@@ -152,5 +181,11 @@ class DishDetailView(APIView):
     )
     def get(self, request, slug):
         lang = request.query_params.get("lang", "en")
-        result = get_dish(slug=slug, lang=lang)
+        try:
+            result = get_dish(slug=slug, lang=lang)
+        except EngineUnavailableError:
+            return Response(
+                {"engine_status": "degraded", "slug": slug},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         return Response(result)

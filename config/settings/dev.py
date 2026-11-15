@@ -7,11 +7,13 @@ ALLOWED_HOSTS = ["*"]
 CORS_ALLOW_ALL_ORIGINS = True
 
 # Show SQL queries in dev
-LOGGING["loggers"]["django.db.backends"] = {  # noqa: F405
+loggers_config = LOGGING.get("loggers", {})
+loggers_config["django.db.backends"] = {
     "handlers": ["console"],
     "level": "DEBUG",
     "propagate": False,
 }
+LOGGING["loggers"] = loggers_config
 
 INSTALLED_APPS += ["debug_toolbar"]  # noqa: F405
 MIDDLEWARE += ["debug_toolbar.middleware.DebugToolbarMiddleware"]  # noqa: F405

@@ -7,6 +7,11 @@ from apps.billing import views
 urlpatterns = [
     path("plans/", views.PlanListView.as_view(), name="billing-plans"),
     path("subscription/", views.SubscriptionView.as_view(), name="subscription"),
+    path(
+        "subscription/cancel/",
+        views.CancelSubscriptionView.as_view(),
+        name="subscription-cancel",
+    ),
     path("subscribe/", views.SubscribeView.as_view(), name="subscribe"),
     path("paystack/webhook/", views.PaystackWebhookView.as_view(), name="paystack-webhook"),
 ]

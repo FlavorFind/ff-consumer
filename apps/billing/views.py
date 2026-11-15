@@ -27,7 +27,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.billing.models import Payment, Plan, Subscription
-from apps.core.models import log_audit_event
+from apps.core.models import AuditEvent, log_audit_event
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +104,45 @@ class SubscriptionView(APIView):
         return Response(SubscriptionSerializer(sub).data)
 
 
+class CancelSubscriptionView(APIView):
+    """POST /v1/subscription/cancel/ — cancel the current user's subscription."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        responses={200: SubscriptionSerializer},
+        summary="Cancel subscription",
+        description=(
+            "Cancels the current user's subscription. Access to Plus features "
+            "ends immediately; the user keeps Free access."
+        ),
+    )
+    def post(self, request):
+        try:
+            sub = Subscription.objects.get(user=request.user)
+        except Subscription.DoesNotExist:
+            return Response(
+                {"error": {"code": "not_found", "message": "No subscription found."}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if sub.status != Subscription.Status.CANCELLED:
+            sub.status = Subscription.Status.CANCELLED
+            sub.cancelled_at = timezone.now()
+            sub.renews_at = None
+            sub.save(update_fields=["status", "cancelled_at", "renews_at", "updated_at"])
+            log_audit_event(
+                action="subscription_cancelled",
+                actor_id=request.user.id,
+                actor_type=AuditEvent.ActorType.USER,
+                object_type="subscription",
+                object_id=str(sub.id),
+                ip_address=request.META.get("REMOTE_ADDR", ""),
+            )
+
+        return Response(SubscriptionSerializer(sub).data)
+
+
 class SubscribeView(APIView):
     """POST /v1/subscribe/ — initialise a Paystack transaction.
 
@@ -138,14 +177,26 @@ class SubscribeView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Ensure subscription record exists (or create it)
-        subscription, _ = Subscription.objects.get_or_create(
+        # Ensure a subscription record exists, but never grant Plus before payment.
+        # An already-active Plus subscription is left active; everything else is
+        # moved to PENDING and only the verified webhook can activate it.
+        subscription, created = Subscription.objects.get_or_create(
             user=request.user,
-            defaults={"plan": plan, "status": Subscription.Status.ACTIVE},
+            defaults={"plan": plan, "status": Subscription.Status.PENDING},
         )
-        if subscription.plan_id != plan_code:
-            subscription.plan = plan
-            subscription.save(update_fields=["plan", "updated_at"])
+        if not created:
+            update_fields: list[str] = []
+            if subscription.plan_id != plan_code:
+                subscription.plan = plan
+                update_fields.append("plan")
+            if (
+                not subscription.is_active_plus()
+                and subscription.status != Subscription.Status.PENDING
+            ):
+                subscription.status = Subscription.Status.PENDING
+                update_fields.append("status")
+            if update_fields:
+                subscription.save(update_fields=[*update_fields, "updated_at"])
 
         # Create payment record — its UUID becomes the Paystack reference
         payment = Payment.objects.create(
@@ -260,9 +311,10 @@ class PaystackWebhookView(APIView):
             logger.warning("Paystack webhook: no payment found for reference %s", reference)
             return
 
-        # 3. Idempotency — already confirmed, ignore
-        if payment.status == Payment.Status.CONFIRMED:
-            logger.info("Paystack webhook: payment %s already confirmed — ignoring.", reference)
+        # 3. Only a PENDING payment may be confirmed. This makes duplicates
+        # idempotent and prevents failed/mismatched payments from activating Plus.
+        if payment.status != Payment.Status.PENDING:
+            logger.info("Paystack webhook: payment %s is %s — ignoring.", reference, payment.status)
             return
 
         # 4. Re-verify amount (SAFETY: never trust webhook amount alone)

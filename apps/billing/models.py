@@ -35,6 +35,7 @@ class Subscription(models.Model):
     """
 
     class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
         ACTIVE = "active", "Active"
         TRIALING = "trialing", "Trialing"
         CANCELLED = "cancelled", "Cancelled"
@@ -48,7 +49,7 @@ class Subscription(models.Model):
     )
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name="subscriptions")
     status = models.CharField(
-        max_length=20, choices=Status.choices, default=Status.ACTIVE, db_index=True
+        max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True
     )
     trial_ends_at = models.DateTimeField(null=True, blank=True)
     renews_at = models.DateTimeField(null=True, blank=True)

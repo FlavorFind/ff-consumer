@@ -935,3 +935,39 @@ class TestAllergenDisclaimer:
             "/v1/search/", {"ingredients": ["obscure-ingredient-xyz"]}, format="json"
         )
         assert "allergen_disclaimer" in resp.json()
+
+
+class TestPublicAnonymousSearch:
+    """Anonymous callers can search, but get a restricted result set."""
+
+    @responses_lib.activate
+    def test_anonymous_search_allowed_and_limited(self, api_client):
+        mock_dataset_version()
+        mock_engine_search(make_search_response({"exact": [DISH_VEGETARIAN]}))
+
+        resp = api_client.post(
+            "/v1/search/",
+            {"ingredients": ["tomato"], "limit": 50},
+            format="json",
+        )
+        assert resp.status_code == 200
+        assert "allergen_disclaimer" in resp.json()
+
+        search_call = next(
+            c for c in responses_lib.calls if "/search/by-ingredients" in c.request.url
+        )
+        body = json.loads(search_call.request.body)
+        assert body["diet"] == [], "Anonymous users must never send a diet list"
+        assert body["limit"] <= 5, "Anonymous users must get a restricted result set"
+
+    @responses_lib.activate
+    def test_anonymous_search_diet_not_sent(self, api_client):
+        mock_dataset_version()
+        mock_engine_search(make_search_response({"exact": []}))
+
+        api_client.post("/v1/search/", {"ingredients": ["tomato"]}, format="json")
+        search_call = next(
+            c for c in responses_lib.calls if "/search/by-ingredients" in c.request.url
+        )
+        body = json.loads(search_call.request.body)
+        assert "diet" not in body or body["diet"] == []

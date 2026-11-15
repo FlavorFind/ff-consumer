@@ -30,6 +30,17 @@ class TestPantryCRUD:
         assert response.status_code == 200
         assert response.json()["display_name"] == "Sukuma Wiki (Updated)"
 
+    def test_add_item_by_slug_only(self, auth_client):
+        response = auth_client.post(
+            "/v1/pantry/",
+            {"ingredient_slug": "sukuma-wiki", "display_name": "Sukuma Wiki"},
+            format="json",
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["ingredient_slug"] == "sukuma-wiki"
+        assert data["display_name"] == "Sukuma Wiki"
+
     def test_list_shows_added_item(self, auth_client):
         auth_client.post("/v1/pantry/", INGREDIENT, format="json")
         response = auth_client.get("/v1/pantry/")

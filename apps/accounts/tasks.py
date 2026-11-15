@@ -28,7 +28,7 @@ def purge_user_data_after_grace_period(user_id: str):
       - Meal plans and shopping lists
       - Community submissions and reviews
       - Devices and push tokens
-      - OTP requests
+      - OTP requests (staff only — TOTP via django_otp; phone OTP removed in favour of email verification)
       - Consent records (kept as anonymous records for compliance)
       - Profile and diet tags
       - The CustomUser record itself (anonymised, not deleted, for FK integrity)

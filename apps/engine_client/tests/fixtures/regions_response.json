@@ -1,0 +1,21 @@
+{
+  "count": 2,
+  "results": [
+    {
+      "id": "55555555-5555-4555-8555-555555555555",
+      "slug": "nairobi",
+      "name": "Nairobi",
+      "type": "county",
+      "parent_slug": null,
+      "description": "Capital city cuisine."
+    },
+    {
+      "id": "66666666-6666-4666-8666-666666666666",
+      "slug": "coast",
+      "name": "Coast",
+      "type": "cuisine",
+      "parent_slug": null,
+      "description": "Swahili coastal cuisine."
+    }
+  ]
+}

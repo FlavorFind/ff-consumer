@@ -4,6 +4,7 @@ import contextvars
 import json
 import logging
 import traceback
+from typing import Any
 
 request_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "request_id", default=None
@@ -22,7 +23,7 @@ class JSONFormatter(logging.Formatter):
     """Format log records as JSON for structured logging."""
 
     def format(self, record: logging.LogRecord) -> str:
-        log_data = {
+        log_data: dict[str, Any] = {
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),

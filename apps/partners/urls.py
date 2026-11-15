@@ -4,4 +4,6 @@ Sponsored slots are served internally — no public endpoints in v1.
 The admin interface is used to manage slots.
 """
 
-urlpatterns = []
+from typing import Any
+
+urlpatterns: list[Any] = []

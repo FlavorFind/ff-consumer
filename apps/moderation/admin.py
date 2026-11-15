@@ -81,11 +81,11 @@ class SubmissionModerationAdmin(ModerationAdminMixin, admin.ModelAdmin):
         qs = super().get_queryset(request)
         return qs.select_related("user")
 
+    @admin.display(description="Recipe Name")
     def get_recipe_name(self, obj):
         return obj.payload.get("name_en", "—") if obj.payload else "—"
 
-    get_recipe_name.short_description = "Recipe Name"
-
+    @admin.action(description="✅ Approve and forward to engine")
     def approve_and_forward(self, request, queryset):
         """Approve selected submissions and forward to engine via Celery.
 
@@ -123,8 +123,7 @@ class SubmissionModerationAdmin(ModerationAdminMixin, admin.ModelAdmin):
             request, f"{count} submission(s) approved and queued for engine forwarding."
         )
 
-    approve_and_forward.short_description = "✅ Approve and forward to engine"
-
+    @admin.action(description="❌ Reject submissions")
     def reject_submissions(self, request, queryset):
         """Reject selected submissions.
 
@@ -158,8 +157,6 @@ class SubmissionModerationAdmin(ModerationAdminMixin, admin.ModelAdmin):
 
         self.message_user(request, f"{count} submission(s) rejected.")
 
-    reject_submissions.short_description = "❌ Reject submissions"
-
 
 @admin.register(Review)
 class ReviewModerationAdmin(ModerationAdminMixin, admin.ModelAdmin):
@@ -182,6 +179,7 @@ class ReviewModerationAdmin(ModerationAdminMixin, admin.ModelAdmin):
     def get_queryset(self, request):
         return super().get_queryset(request).select_related("user")
 
+    @admin.action(description="✅ Approve reviews")
     def approve_reviews(self, request, queryset):
         if not self._require_step_up(request):
             self.message_user(
@@ -210,8 +208,7 @@ class ReviewModerationAdmin(ModerationAdminMixin, admin.ModelAdmin):
         queryset.filter(status=Review.Status.PENDING).update(status=Review.Status.APPROVED)
         self.message_user(request, f"{count} review(s) approved.")
 
-    approve_reviews.short_description = "✅ Approve reviews"
-
+    @admin.action(description="❌ Reject reviews")
     def reject_reviews(self, request, queryset):
         if not self._require_step_up(request):
             self.message_user(
@@ -239,5 +236,3 @@ class ReviewModerationAdmin(ModerationAdminMixin, admin.ModelAdmin):
 
         queryset.exclude(status=Review.Status.REJECTED).update(status=Review.Status.REJECTED)
         self.message_user(request, f"{count} review(s) rejected.")
-
-    reject_reviews.short_description = "❌ Reject reviews"

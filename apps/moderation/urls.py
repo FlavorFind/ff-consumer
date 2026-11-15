@@ -4,4 +4,6 @@ Moderation is handled entirely through the Django admin.
 No public-facing endpoints.
 """
 
-urlpatterns = []
+from typing import Any
+
+urlpatterns: list[Any] = []

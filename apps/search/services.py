@@ -20,12 +20,20 @@ ALLERGEN_DISCLAIMER = (
     "Allergen information is for guidance only. " "Always confirm with the kitchen before ordering."
 )
 
+ANONYMOUS_RESULT_LIMIT = 5
+FREE_RESULT_LIMIT = 20
+PLUS_RESULT_LIMIT = 50
+
 
 def get_user_diet_tags(user: "CustomUser") -> list[str]:
     """Return all diet tag slugs for the user — both preferences and allergen exclusions.
 
     This is the authoritative source of diet restrictions for engine calls.
+    Unauthenticated callers have no restrictions — an empty list is safe and
+    never silently drops an allergen exclusion.
     """
+    if not user or not getattr(user, "is_authenticated", False):
+        return []
     return list(user.diet_tags.values_list("diet_tag_slug", flat=True))
 
 
@@ -56,10 +64,12 @@ def search(
     # 1. Get user's diet tags — SAFETY CRITICAL
     diet = get_user_diet_tags(user)
 
-    # 2. Inject pantry items (slugs the engine understands)
-    pantry_slugs = list(
-        PantryItem.objects.filter(user=user).values_list("ingredient_slug", flat=True)
-    )
+    # 2. Inject pantry items (slugs the engine understands) — auth only
+    pantry_slugs = []
+    if user and getattr(user, "is_authenticated", False):
+        pantry_slugs = list(
+            PantryItem.objects.filter(user=user).values_list("ingredient_slug", flat=True)
+        )
     # Merge pantry with explicit ingredients, deduplicating
     all_ingredients = list(dict.fromkeys(ingredients + pantry_slugs))
 

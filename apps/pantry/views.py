@@ -1,5 +1,7 @@
 """Pantry views — CRUD for pantry items."""
 
+import uuid
+
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -37,20 +39,28 @@ class PantryView(APIView):
         ser = AddPantryItemSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
 
+        ingredient_id = ser.validated_data.get("ingredient_id") or str(
+            uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"flavorfind:pantry:{ser.validated_data.get('ingredient_slug') or ''}",
+            )
+        )
+        ingredient_slug = ser.validated_data.get("ingredient_slug") or ingredient_id
+        display_name = ser.validated_data.get("display_name") or ingredient_slug
         item, created = PantryItem.objects.get_or_create(
             user=request.user,
-            ingredient_id=ser.validated_data["ingredient_id"],
+            ingredient_id=ingredient_id,
             defaults={
-                "ingredient_slug": ser.validated_data["ingredient_slug"],
-                "display_name": ser.validated_data["display_name"],
+                "ingredient_slug": ingredient_slug,
+                "display_name": display_name,
                 "expires_on": ser.validated_data.get("expires_on"),
             },
         )
 
         if not created:
             # Update display name and expiry in case they changed
-            item.ingredient_slug = ser.validated_data["ingredient_slug"]
-            item.display_name = ser.validated_data["display_name"]
+            item.ingredient_slug = ser.validated_data.get("ingredient_slug") or item.ingredient_slug
+            item.display_name = ser.validated_data.get("display_name") or item.display_name
             item.expires_on = ser.validated_data.get("expires_on")
             item.save(update_fields=["ingredient_slug", "display_name", "expires_on"])
 

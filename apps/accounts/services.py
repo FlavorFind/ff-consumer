@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from apps.accounts.models import EmailVerification
+from apps.accounts.models import CustomUser, EmailVerification
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def send_verification_email(user) -> None:
     )
 
 
-def verify_email_token(token: str) -> User:
+def verify_email_token(token: str) -> CustomUser:
     """Verify the email token and mark the user's email as verified.
 
     Returns the user on success. Raises ValueError with a user-safe message on failure.
