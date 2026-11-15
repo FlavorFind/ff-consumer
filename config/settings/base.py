@@ -302,11 +302,9 @@ RESEND_FROM_EMAIL = env("RESEND_FROM_EMAIL", default="Flavor Find <onboarding@re
 # Frontend / app URLs
 # ---------------------------------------------------------------------------
 FRONTEND_URL = env("FRONTEND_URL", default="https://flavorfind.co.ke")
-# APP_BASE_URL is the consumer-facing subdomain that the Android app registers as an App Link.
-# The browser-fallback verify page lives at {APP_BASE_URL}/verify?token=<token>.
-# The email CTA uses the custom scheme (flavorfind://verify?token=...) as primary;
-# APP_BASE_URL is used as the plain-text browser fallback.
-APP_BASE_URL = env("APP_BASE_URL", default="https://app.flavorfind.co.ke")
+# APP_BASE_URL is the base URL of this backend — used as the browser fallback for the
+# email verification deep link. The verify page lives at {APP_BASE_URL}/verify?token=<token>.
+APP_BASE_URL = env("APP_BASE_URL", default="https://consumer.flavorfind.co.ke")
 
 # SHA-256 fingerprint of the Android release signing certificate.
 # Used in /.well-known/assetlinks.json to enable Android App Links.
