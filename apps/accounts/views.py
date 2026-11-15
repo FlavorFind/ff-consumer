@@ -390,20 +390,88 @@ def _build_user_export(user) -> dict:
 # Deep link support — Android App Links
 # ---------------------------------------------------------------------------
 
-_VERIFY_SUCCESS_HTML = """<!DOCTYPE html>
+# ---------------------------------------------------------------------------
+# /verify  — smart deep-link bridge page
+#
+# Strategy:
+#   1. Page loads → immediately tries flavorfind://verify?token=...
+#      Android intercepts this, opens the app, VerifyEmailScreen handles it.
+#   2. After 1.8 s, if the app didn't open (desktop browser, app not installed,
+#      or App Links not yet configured), JS sets ?fallback=1 and reloads.
+#   3. On reload with ?fallback=1 the server verifies the token itself and
+#      renders a plain success/error HTML page.
+#
+# This covers every surface:
+#   • Android (app installed)   → deep link fires, page never shown
+#   • Android (app not installed) → browser fallback page after 1.8 s
+#   • Desktop browser           → server-side verify after 1.8 s
+#   • Web (future)              → same as desktop
+# ---------------------------------------------------------------------------
+
+_VERIFY_BRIDGE_HTML = """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Verifying — Flavor Find</title>
+  <style>
+    *{{box-sizing:border-box;margin:0;padding:0}}
+    body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+          background:#0d1f14;color:#f1f5f9;
+          display:flex;align-items:center;justify-content:center;
+          min-height:100vh;text-align:center;padding:1.5rem}}
+    .card{{background:#1a2e1f;border:1px solid #2d4a35;border-radius:1.25rem;
+           padding:3rem 2.5rem;max-width:420px;width:100%}}
+    .spinner{{width:48px;height:48px;border:4px solid #2d4a35;
+              border-top-color:#c9a84c;border-radius:50%;
+              animation:spin .9s linear infinite;margin:0 auto 1.5rem}}
+    @keyframes spin{{to{{transform:rotate(360deg)}}}}
+    h1{{font-size:1.4rem;font-weight:700;color:#fff;margin-bottom:.5rem}}
+    p{{color:#94a3b8;font-size:.95rem;line-height:1.5}}
+    .gold{{color:#c9a84c;font-weight:600}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="spinner"></div>
+    <h1>Opening Flavor Find&hellip;</h1>
+    <p>Taking you back to the app to complete verification.</p>
+    <p style="margin-top:1rem;font-size:.8rem;color:#4b5563">
+      Not working? <a href="?token={token}&fallback=1" style="color:#c9a84c">Verify in browser instead</a>
+    </p>
+  </div>
+  <script>
+    // Immediately try to open the app via custom scheme
+    window.location.href = "flavorfind://verify?token={token}";
+
+    // After 1.8 s assume the app didn't open and fall back to server-side verify
+    setTimeout(function() {{
+      window.location.href = window.location.pathname
+        + "?token={token}&fallback=1";
+    }}, 1800);
+  </script>
+</body>
+</html>"""
+
+_VERIFY_SUCCESS_HTML = """\
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Email Verified — Flavor Find</title>
   <style>
-    body{{font-family:sans-serif;background:#0f172a;color:#f1f5f9;
-         display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}}
-    .card{{text-align:center;padding:3rem 2.5rem;background:#1e293b;
-           border-radius:1rem;border:1px solid #334155;max-width:420px;width:90%}}
-    h1{{color:#22c55e;margin-bottom:.5rem}}
-    p{{color:#94a3b8}}
-    .icon{{font-size:3rem;margin-bottom:1rem}}
+    *{{box-sizing:border-box;margin:0;padding:0}}
+    body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+          background:#0d1f14;color:#f1f5f9;
+          display:flex;align-items:center;justify-content:center;
+          min-height:100vh;text-align:center;padding:1.5rem}}
+    .card{{background:#1a2e1f;border:1px solid #2d4a35;border-radius:1.25rem;
+           padding:3rem 2.5rem;max-width:420px;width:100%}}
+    .icon{{font-size:3.5rem;margin-bottom:1.25rem}}
+    h1{{font-size:1.5rem;font-weight:700;color:#22c55e;margin-bottom:.5rem}}
+    p{{color:#94a3b8;font-size:.95rem;line-height:1.5;margin-top:.75rem}}
   </style>
 </head>
 <body>
@@ -411,27 +479,29 @@ _VERIFY_SUCCESS_HTML = """<!DOCTYPE html>
     <div class="icon">✅</div>
     <h1>Email verified!</h1>
     <p>{message}</p>
-    <p style="margin-top:2rem;font-size:.875rem;">
-      You can close this tab and open the Flavor Find app.
-    </p>
+    <p>You can close this tab and open the Flavor Find app.</p>
   </div>
 </body>
 </html>"""
 
-_VERIFY_ERROR_HTML = """<!DOCTYPE html>
+_VERIFY_ERROR_HTML = """\
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Verification Failed — Flavor Find</title>
   <style>
-    body{{font-family:sans-serif;background:#0f172a;color:#f1f5f9;
-         display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}}
-    .card{{text-align:center;padding:3rem 2.5rem;background:#1e293b;
-           border-radius:1rem;border:1px solid #334155;max-width:420px;width:90%}}
-    h1{{color:#ef4444;margin-bottom:.5rem}}
-    p{{color:#94a3b8}}
-    .icon{{font-size:3rem;margin-bottom:1rem}}
+    *{{box-sizing:border-box;margin:0;padding:0}}
+    body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+          background:#0d1f14;color:#f1f5f9;
+          display:flex;align-items:center;justify-content:center;
+          min-height:100vh;text-align:center;padding:1.5rem}}
+    .card{{background:#1a2e1f;border:1px solid #2d4a35;border-radius:1.25rem;
+           padding:3rem 2.5rem;max-width:420px;width:100%}}
+    .icon{{font-size:3.5rem;margin-bottom:1.25rem}}
+    h1{{font-size:1.5rem;font-weight:700;color:#ef4444;margin-bottom:.5rem}}
+    p{{color:#94a3b8;font-size:.95rem;line-height:1.5;margin-top:.75rem}}
   </style>
 </head>
 <body>
@@ -439,10 +509,8 @@ _VERIFY_ERROR_HTML = """<!DOCTYPE html>
     <div class="icon">❌</div>
     <h1>Verification failed</h1>
     <p>{message}</p>
-    <p style="margin-top:2rem;font-size:.875rem;">
-      Open the Flavor Find app and use the &ldquo;Resend verification email&rdquo; option
-      to get a new link.
-    </p>
+    <p>Open the Flavor Find app and use the &ldquo;Resend verification email&rdquo; option
+       to get a new link.</p>
   </div>
 </body>
 </html>"""
@@ -451,22 +519,36 @@ _VERIFY_ERROR_HTML = """<!DOCTYPE html>
 def verify_email_browser(request):
     """GET /verify?token=<token>
 
-    Browser fallback for the email verification deep link.
-    Android opens the custom-scheme link (flavorfind://verify?token=...) directly in the app.
-    Desktop users, or Android users who tap the plain-text fallback link, land here instead.
+    Smart deep-link bridge for email verification.
 
-    This view calls the same verify_email_token() logic as the API endpoint, then renders a
-    simple HTML confirmation or error page.  No auth required — the token IS the credential.
+    First visit (no ?fallback):
+      Returns a page that immediately fires flavorfind://verify?token=...
+      Android intercepts it and opens VerifyEmailScreen in the app.
+      After 1.8 s JS reloads with ?fallback=1 for desktop/no-app users.
+
+    Second visit (?fallback=1):
+      Verifies the token server-side, returns a plain HTML result page.
+      Works for desktop browsers and future web users.
+
+    No auth required — the token IS the credential.
     """
     token = request.GET.get("token", "").strip()
+    fallback = request.GET.get("fallback", "").strip() == "1"
+
     if not token:
         html = _VERIFY_ERROR_HTML.format(message="No verification token was provided.")
         return HttpResponse(html, content_type="text/html", status=400)
 
+    if not fallback:
+        # First pass: show the bridge page that tries the deep link
+        html = _VERIFY_BRIDGE_HTML.format(token=token)
+        return HttpResponse(html, content_type="text/html", status=200)
+
+    # Fallback pass: verify server-side for desktop / no-app users
     try:
         user = verify_email_token(token)
         html = _VERIFY_SUCCESS_HTML.format(
-            message=f"Your email address <strong>{user.email}</strong> has been confirmed."
+            message=f"Your email address <strong>{user.email}</strong> has been confirmed.",
         )
         return HttpResponse(html, content_type="text/html", status=200)
     except ValueError as exc:

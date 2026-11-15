@@ -46,9 +46,9 @@ def send_verification_email(user) -> None:
     # Primary link: custom scheme deep link — Android intercepts this directly.
     deep_link_url = f"flavorfind://verify?token={token}"
 
-    # Browser fallback: HTTPS URL served by the backend (desktop users, App Links fallback).
-    # APP_BASE_URL defaults to https://app.flavorfind.co.ke
-    app_base_url = getattr(settings, "APP_BASE_URL", "https://app.flavorfind.co.ke")
+    # Browser fallback / deep-link bridge: served by this backend.
+    # APP_BASE_URL defaults to https://consumer.flavorfind.co.ke
+    app_base_url = getattr(settings, "APP_BASE_URL", "https://consumer.flavorfind.co.ke")
     browser_url = f"{app_base_url}/verify?token={token}"
 
     _send_via_resend(
@@ -59,17 +59,20 @@ def send_verification_email(user) -> None:
         <p>Thanks for signing up for Flavor Find!</p>
         <p>Tap the button below to verify your email address. The link expires in 24 hours.</p>
         <p>
-          <a href="{deep_link_url}"
-             style="background:#e85d04;color:#fff;padding:12px 24px;
-                    border-radius:4px;text-decoration:none;display:inline-block;">
+          <a href="{browser_url}"
+             style="background:#c9a84c;color:#0d1f14;padding:12px 28px;
+                    border-radius:6px;text-decoration:none;display:inline-block;
+                    font-weight:700;font-size:16px;">
             Verify my email
           </a>
         </p>
-        <p style="color:#666;font-size:0.9em;">
-          If the button doesn't open the app, use this link in your browser:<br>
-          <a href="{browser_url}">{browser_url}</a>
+        <p style="color:#666;font-size:0.875em;margin-top:1.5rem;">
+          Button not working? Copy and paste this link into your browser:<br>
+          <a href="{browser_url}" style="color:#c9a84c;">{browser_url}</a>
         </p>
-        <p>If you didn't create an account, you can ignore this email.</p>
+        <p style="color:#666;font-size:0.875em;">
+          If you didn't create an account, you can ignore this email.
+        </p>
         <p>— The Flavor Find team</p>
         """,
     )
