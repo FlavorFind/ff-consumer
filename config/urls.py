@@ -6,6 +6,8 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from two_factor.urls import urlpatterns as tf_urls
 
+from apps.accounts.views import asset_links, verify_email_browser
+
 
 def home(request):
     """Simple landing page."""
@@ -55,6 +57,17 @@ urlpatterns = [
     # OpenAPI schema and docs
     path("v1/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
+    # -------------------------------------------------------------------------
+    # Android deep link support
+    # -------------------------------------------------------------------------
+    # Browser fallback for email verification links.
+    # Android intercepts flavorfind://verify?token=... directly in the app.
+    # Desktop users (or any browser) land here instead and get an HTML confirmation page.
+    path("verify", verify_email_browser, name="verify-email-browser"),
+    # Digital Asset Links — required for Android App Links (HTTPS deep links).
+    # Android fetches this before intercepting https://app.flavorfind.co.ke/... links.
+    # Must be served with no auth and no redirects.
+    path(".well-known/assetlinks.json", asset_links, name="assetlinks"),
 ]
 
 # Django admin — disabled in production via ADMIN_ENABLED env var

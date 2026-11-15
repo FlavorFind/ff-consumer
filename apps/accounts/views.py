@@ -3,6 +3,7 @@
 import logging
 
 from django.contrib.auth import get_user_model
+from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -383,3 +384,126 @@ def _build_user_export(user) -> dict:
         "consents": consents,
         "devices": devices,
     }
+
+
+# ---------------------------------------------------------------------------
+# Deep link support — Android App Links
+# ---------------------------------------------------------------------------
+
+_VERIFY_SUCCESS_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Email Verified — Flavor Find</title>
+  <style>
+    body{{font-family:sans-serif;background:#0f172a;color:#f1f5f9;
+         display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}}
+    .card{{text-align:center;padding:3rem 2.5rem;background:#1e293b;
+           border-radius:1rem;border:1px solid #334155;max-width:420px;width:90%}}
+    h1{{color:#22c55e;margin-bottom:.5rem}}
+    p{{color:#94a3b8}}
+    .icon{{font-size:3rem;margin-bottom:1rem}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">✅</div>
+    <h1>Email verified!</h1>
+    <p>{message}</p>
+    <p style="margin-top:2rem;font-size:.875rem;">
+      You can close this tab and open the Flavor Find app.
+    </p>
+  </div>
+</body>
+</html>"""
+
+_VERIFY_ERROR_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Verification Failed — Flavor Find</title>
+  <style>
+    body{{font-family:sans-serif;background:#0f172a;color:#f1f5f9;
+         display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}}
+    .card{{text-align:center;padding:3rem 2.5rem;background:#1e293b;
+           border-radius:1rem;border:1px solid #334155;max-width:420px;width:90%}}
+    h1{{color:#ef4444;margin-bottom:.5rem}}
+    p{{color:#94a3b8}}
+    .icon{{font-size:3rem;margin-bottom:1rem}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">❌</div>
+    <h1>Verification failed</h1>
+    <p>{message}</p>
+    <p style="margin-top:2rem;font-size:.875rem;">
+      Open the Flavor Find app and use the &ldquo;Resend verification email&rdquo; option
+      to get a new link.
+    </p>
+  </div>
+</body>
+</html>"""
+
+
+def verify_email_browser(request):
+    """GET /verify?token=<token>
+
+    Browser fallback for the email verification deep link.
+    Android opens the custom-scheme link (flavorfind://verify?token=...) directly in the app.
+    Desktop users, or Android users who tap the plain-text fallback link, land here instead.
+
+    This view calls the same verify_email_token() logic as the API endpoint, then renders a
+    simple HTML confirmation or error page.  No auth required — the token IS the credential.
+    """
+    token = request.GET.get("token", "").strip()
+    if not token:
+        html = _VERIFY_ERROR_HTML.format(message="No verification token was provided.")
+        return HttpResponse(html, content_type="text/html", status=400)
+
+    try:
+        user = verify_email_token(token)
+        html = _VERIFY_SUCCESS_HTML.format(
+            message=f"Your email address <strong>{user.email}</strong> has been confirmed."
+        )
+        return HttpResponse(html, content_type="text/html", status=200)
+    except ValueError as exc:
+        html = _VERIFY_ERROR_HTML.format(message=str(exc))
+        return HttpResponse(html, content_type="text/html", status=400)
+
+
+def asset_links(request):
+    """GET /.well-known/assetlinks.json
+
+    Digital Asset Links file required for Android App Links.
+    Android verifies this file before intercepting HTTPS links for the app.
+
+    Requirements (Android spec):
+    - Served over HTTPS with no redirects
+    - Content-Type: application/json
+    - No authentication on this path
+    - Must contain the release signing cert SHA-256 fingerprint
+
+    The SHA-256 fingerprint is set via ANDROID_CERT_SHA256 in settings.
+    Until the release keystore is generated, leave ANDROID_CERT_SHA256 empty
+    and the file will return an empty fingerprints list (App Links won't be verified,
+    but custom-scheme deep links still work).
+    """
+    from django.conf import settings as django_settings
+
+    fingerprint = getattr(django_settings, "ANDROID_CERT_SHA256", "")
+    fingerprints = [fingerprint] if fingerprint else []
+
+    data = [
+        {
+            "relation": ["delegate_permission/common.handle_all_urls"],
+            "target": {
+                "namespace": "android_app",
+                "package_name": "co.ke.flavorfind",
+                "sha256_cert_fingerprints": fingerprints,
+            },
+        }
+    ]
+    return JsonResponse(data, safe=False)

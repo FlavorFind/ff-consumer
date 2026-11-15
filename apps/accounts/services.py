@@ -43,7 +43,13 @@ def send_verification_email(user) -> None:
         expires_at=timezone.now() + timedelta(hours=EMAIL_VERIFY_TTL_HOURS),
     )
 
-    verify_url = f"{settings.FRONTEND_URL}/verify-email?token={token}"
+    # Primary link: custom scheme deep link — Android intercepts this directly.
+    deep_link_url = f"flavorfind://verify?token={token}"
+
+    # Browser fallback: HTTPS URL served by the backend (desktop users, App Links fallback).
+    # APP_BASE_URL defaults to https://app.flavorfind.co.ke
+    app_base_url = getattr(settings, "APP_BASE_URL", "https://app.flavorfind.co.ke")
+    browser_url = f"{app_base_url}/verify?token={token}"
 
     _send_via_resend(
         to=user.email,
@@ -51,11 +57,18 @@ def send_verification_email(user) -> None:
         html=f"""
         <p>Hi {user.username},</p>
         <p>Thanks for signing up for Flavor Find!</p>
-        <p>Click the link below to verify your email address. The link expires in 24 hours.</p>
-        <p><a href="{verify_url}" style="background:#e85d04;color:#fff;padding:12px 24px;
-           border-radius:4px;text-decoration:none;display:inline-block;">
-           Verify my email</a></p>
-        <p>Or copy this link into your browser:<br>{verify_url}</p>
+        <p>Tap the button below to verify your email address. The link expires in 24 hours.</p>
+        <p>
+          <a href="{deep_link_url}"
+             style="background:#e85d04;color:#fff;padding:12px 24px;
+                    border-radius:4px;text-decoration:none;display:inline-block;">
+            Verify my email
+          </a>
+        </p>
+        <p style="color:#666;font-size:0.9em;">
+          If the button doesn't open the app, use this link in your browser:<br>
+          <a href="{browser_url}">{browser_url}</a>
+        </p>
         <p>If you didn't create an account, you can ignore this email.</p>
         <p>— The Flavor Find team</p>
         """,
