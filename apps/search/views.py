@@ -136,10 +136,9 @@ class IngredientsView(APIView):
     """GET /v1/ingredients/ — autocomplete ingredient search.
 
     Results are cached for 10 minutes. Debounce on the client side.
-    Open to all users — guests get autocomplete too.
     """
 
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(
         parameters=[IngredientQuerySerializer],
