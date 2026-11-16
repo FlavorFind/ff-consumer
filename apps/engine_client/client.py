@@ -318,6 +318,34 @@ class EngineClient:
         cache.set(cache_key, result, timeout=_DISH_TTL)
         return result
 
+    def list_dishes(
+        self,
+        has_image: bool | None = None,
+        meal_type: str | None = None,
+        limit: int = 10,
+    ) -> dict:
+        """List dishes from the engine catalogue.
+
+        Cached per parameter set for 1 hour (the engine orders by popularity,
+        and image coverage changes only when new images are uploaded).
+        """
+        params: dict = {"limit": limit}
+        if has_image is not None:
+            params["has_image"] = "true" if has_image else "false"
+        if meal_type:
+            params["meal_type"] = meal_type
+
+        cache_key = (
+            f"{_DISH_PREFIX}list:"
+            f"img={has_image}:meal={meal_type}:limit={limit}"
+        )
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+        result = self._get("/v1/dishes/", params=params)
+        cache.set(cache_key, result, timeout=_DISH_TTL)
+        return result
+
     def get_pairings(self, slug: str) -> dict:
         return self._get(f"/v1/dishes/{slug}/pairings/")
 

@@ -22,6 +22,7 @@ from apps.search.services import (
     FREE_RESULT_LIMIT,
     get_dish,
     get_ingredients,
+    list_dishes,
     resolve,
     search,
 )
@@ -186,6 +187,50 @@ class DishDetailView(APIView):
         except EngineUnavailableError:
             return Response(
                 {"engine_status": "degraded", "slug": slug},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response(result)
+
+
+class DishListView(APIView):
+    """GET /v1/dishes/ — dish catalogue from the engine.
+
+    Query params:
+        has_image (bool): if true, only return dishes with image_url set.
+                          Used by Android/iOS for the home screen carousel.
+        meal_type (str):  filter by meal type (breakfast, lunch, dinner, snack).
+        limit (int):      max results to return (default 10, max 25).
+
+    Public endpoint — no auth required.
+    """
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        responses={200: {"type": "object"}},
+        summary="Dish catalogue",
+        description=(
+            "List dishes from the engine catalogue. "
+            "Pass has_image=true to get only dishes with a Cloudinary image — "
+            "used by the mobile app home screen carousel."
+        ),
+    )
+    def get(self, request):
+        raw_has_image = request.query_params.get("has_image", "").lower()
+        has_image = True if raw_has_image in ("true", "1", "yes") else (
+            False if raw_has_image in ("false", "0", "no") else None
+        )
+        meal_type = request.query_params.get("meal_type") or None
+        try:
+            limit = min(int(request.query_params.get("limit", 10)), 25)
+        except (ValueError, TypeError):
+            limit = 10
+
+        try:
+            result = list_dishes(has_image=has_image, meal_type=meal_type, limit=limit)
+        except EngineUnavailableError:
+            return Response(
+                {"engine_status": "degraded", "count": 0, "results": []},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         return Response(result)

@@ -142,3 +142,18 @@ def get_dish(slug: str, lang: str = "en") -> dict:
     if result.get("diet_tags") or result.get("allergen_notes"):
         result["allergen_disclaimer"] = ALLERGEN_DISCLAIMER
     return result
+
+
+def list_dishes(
+    has_image: bool | None = None,
+    meal_type: str | None = None,
+    limit: int = 10,
+) -> dict:
+    """List dishes from the engine catalogue.
+
+    Pass has_image=True to fetch only dishes that have an image_url set —
+    used by the Android/iOS home screen carousel.
+    """
+    from apps.engine_client.client import engine
+
+    return engine.list_dishes(has_image=has_image, meal_type=meal_type, limit=limit)
