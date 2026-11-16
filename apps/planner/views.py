@@ -157,6 +157,16 @@ class ShoppingItemCheckView(APIView):
         if "quantity_note" in request.data:
             item.quantity_note = request.data["quantity_note"]
         item.save()
+
+        # When an item is checked off, deduct from pantry asynchronously
+        if item.checked and "checked" in request.data and bool(request.data["checked"]):
+            from apps.planner.tasks import deduct_pantry_on_check
+            deduct_pantry_on_check.delay(
+                user_id=str(request.user.id),
+                ingredient_slug=item.ingredient_slug,
+                quantity_to_deduct=None,  # deduct by 1 unit; future: parse from quantity_note
+            )
+
         return Response(ShoppingItemSerializer(item).data)
 
 

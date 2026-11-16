@@ -255,7 +255,7 @@ CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 CELERY_BEAT_SCHEDULE = {
     "dataset-drift-check-nightly": {
         "task": "apps.engine_client.tasks.check_dataset_drift",
-        "schedule": crontab(hour=2, minute=0),  # 2 AM Nairobi time
+        "schedule": crontab(hour=2, minute=0),  # 2 AM Nairobi
     },
     "subscription-expiry-check-daily": {
         "task": "apps.billing.tasks.check_subscription_expiry",
@@ -267,6 +267,20 @@ CELERY_BEAT_SCHEDULE = {
     },
     "renewal-reminders-daily": {
         "task": "apps.billing.tasks.send_renewal_reminders",
+        "schedule": crontab(hour=8, minute=0),  # 8 AM daily
+    },
+    # Pantry tasks
+    "pantry-low-stock-sweep-daily": {
+        "task": "apps.pantry.tasks.check_all_low_stock",
+        "schedule": crontab(hour=7, minute=0),  # 7 AM daily
+    },
+    "pantry-expiry-reminders-daily": {
+        "task": "apps.pantry.tasks.check_expiry_reminders",
+        "schedule": crontab(hour=7, minute=15),  # 7:15 AM daily
+    },
+    # Planner tasks — buy-ahead reminders at 8 AM so users can shop during the day
+    "planner-meal-reminders-daily": {
+        "task": "apps.planner.tasks.send_meal_reminders",
         "schedule": crontab(hour=8, minute=0),  # 8 AM daily
     },
 }

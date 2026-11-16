@@ -65,8 +65,16 @@ class Subscription(models.Model):
         return f"{self.user} — {self.plan_id} ({self.status})"
 
     def is_active_plus(self) -> bool:
-        """True if the user has an active or trialing Plus subscription."""
-        return self.plan_id == "plus" and self.status in (self.Status.ACTIVE, self.Status.TRIALING)
+        """True if the user has an active or trialing Plus or Premium subscription."""
+        return self.plan_id in ("plus", "premium") and self.status in (
+            self.Status.ACTIVE, self.Status.TRIALING
+        )
+
+    def is_active_premium(self) -> bool:
+        """True if the user has an active or trialing Premium subscription."""
+        return self.plan_id == "premium" and self.status in (
+            self.Status.ACTIVE, self.Status.TRIALING
+        )
 
 
 class Payment(models.Model):

@@ -6,6 +6,8 @@ from datetime import timedelta
 from celery import shared_task
 from django.utils import timezone
 
+from apps.notifications.models import Notification
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,4 +55,28 @@ def send_renewal_reminders():
 
     for sub in upcoming:
         logger.info("Renewal reminder for user %s — renews at %s", sub.user_id, sub.renews_at)
-        # TODO: trigger push notification / email via notifications app
+        from apps.notifications.models import Notification
+        from django.utils import timezone as tz
+
+        # Avoid duplicate if already sent today
+        already_sent = Notification.objects.filter(
+            user=sub.user,
+            type="renewal_reminder",
+            created_at__date=tz.now().date(),
+        ).exists()
+        if already_sent:
+            continue
+
+        days = (sub.renews_at.date() - tz.now().date()).days
+        Notification.objects.create(
+            user=sub.user,
+            channel=Notification.Channel.IN_APP,
+            type="renewal_reminder",
+            title="Your subscription renews soon",
+            body=(
+                f"Your Flavor Find {sub.plan.name} subscription renews in {days} day"
+                f"{'s' if days != 1 else ''}. Make sure your payment method is ready."
+            ),
+            data={"plan_code": sub.plan_id, "renews_at": sub.renews_at.isoformat()},
+            sent_at=tz.now(),
+        )

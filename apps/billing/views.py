@@ -50,12 +50,20 @@ class SubscriptionSerializer(serializers.Serializer):
     trial_ends_at = serializers.DateTimeField(allow_null=True)
     renews_at = serializers.DateTimeField(allow_null=True)
     cancelled_at = serializers.DateTimeField(allow_null=True)
+    is_plus = serializers.SerializerMethodField()
+    is_premium = serializers.SerializerMethodField()
+
+    def get_is_plus(self, obj):
+        return obj.is_active_plus()
+
+    def get_is_premium(self, obj):
+        return obj.is_active_premium()
 
 
 class SubscribeSerializer(serializers.Serializer):
     """Input for POST /v1/subscribe/."""
 
-    plan_code = serializers.ChoiceField(choices=["plus"], default="plus")
+    plan_code = serializers.ChoiceField(choices=["plus", "premium"], default="plus")
 
 
 # ---------------------------------------------------------------------------

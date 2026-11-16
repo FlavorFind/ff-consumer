@@ -6,5 +6,6 @@ from apps.pantry import views
 
 urlpatterns = [
     path("pantry/", views.PantryView.as_view(), name="pantry"),
+    path("pantry/can-make/", views.PantryCanMakeView.as_view(), name="pantry-can-make"),
     path("pantry/<uuid:item_id>/", views.PantryItemDetailView.as_view(), name="pantry-item"),
 ]
