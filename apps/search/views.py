@@ -20,6 +20,7 @@ from apps.search.services import (
     ALLERGEN_DISCLAIMER,
     ANONYMOUS_RESULT_LIMIT,
     FREE_RESULT_LIMIT,
+    get_common_ingredients,
     get_dish,
     get_ingredients,
     list_dishes,
@@ -158,6 +159,38 @@ class IngredientsView(APIView):
         except EngineUnavailableError:
             return Response(
                 {"engine_status": "degraded", "results": []},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response(result)
+
+
+class CommonIngredientsView(APIView):
+    """GET /v1/ingredients/common/ — staple ingredients grouped by category.
+
+    Used by the Android pantry swipe-to-stock UI.
+    Returns common pantry staples grouped by category so the client can present
+    one category at a time as swipeable cards.
+
+    Cached 1 hour in the engine client.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        responses={200: {"type": "object"}},
+        summary="Common staple ingredients grouped by category",
+        description=(
+            "Returns all staple ingredients from the engine grouped by category slug. "
+            "Intended for the pantry onboarding swipe UI. Cached 1 hour."
+        ),
+    )
+    def get(self, request):
+        lang = request.query_params.get("lang", "en")
+        try:
+            result = get_common_ingredients(lang=lang)
+        except EngineUnavailableError:
+            return Response(
+                {"engine_status": "degraded", "groups": []},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         return Response(result)

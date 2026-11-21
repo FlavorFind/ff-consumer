@@ -133,6 +133,26 @@ def get_ingredients(q: str, lang: str = "en") -> dict:
     return engine.get_ingredients(q=q, lang=lang)
 
 
+def get_common_ingredients(lang: str = "en") -> dict:
+    """Return staple ingredients grouped by category for the pantry swipe UI.
+
+    Groups the flat engine list into {category_slug: [ingredient, ...]} so the
+    Android swipe screen can present one category at a time.
+    """
+    from apps.engine_client.client import engine
+
+    result = engine.get_common_ingredients(lang=lang)
+    ingredients = result.get("results", [])
+
+    # Group by category
+    grouped: dict[str, list] = {}
+    for ing in ingredients:
+        cat = ing.get("category") or "other"
+        grouped.setdefault(cat, []).append(ing)
+
+    return {"groups": [{"category": cat, "items": items} for cat, items in grouped.items()]}
+
+
 def get_dish(slug: str, lang: str = "en") -> dict:
     """Fetch dish detail. Cached per slug + dataset_version."""
     from apps.engine_client.client import engine

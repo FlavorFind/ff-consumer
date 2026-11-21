@@ -241,6 +241,23 @@ class EngineClient:
         cache.set(cache_key, result, timeout=_INGREDIENT_AC_TTL)
         return result
 
+    def get_common_ingredients(self, lang: str = "en") -> dict:
+        """Return staple ingredients grouped by category for the pantry swipe UI.
+
+        Results are cached for 1 hour — the list rarely changes.
+        """
+        _COMMON_TTL = 3600
+        cache_key = f"ffconsumer:ingredient_common:{lang}"
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+        result = self._get(
+            "/v1/ingredients/",
+            params={"staple": "true", "lang": lang, "limit": 200},
+        )
+        cache.set(cache_key, result, timeout=_COMMON_TTL)
+        return result
+
     # -------------------------------------------------------------------------
     # Search — SAFETY CRITICAL
     # -------------------------------------------------------------------------
